@@ -1,0 +1,124 @@
+import { lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider, AuthProvider } from './context/AppContext';
+import MainLayout from './components/layout/MainLayout';
+import ScrollToTop from './components/layout/ScrollToTop';
+import ProtectedRoute from './components/auth/ProtectedRoute';
+import Home from './pages/Home';
+import { ADMIN_BASE, ADMIN_LOGIN } from './lib/adminPaths';
+
+const About = lazy(() => import('./pages/About'));
+const Services = lazy(() => import('./pages/Services'));
+const ServiceDetail = lazy(() =>
+  import('./pages/Services').then((m) => ({ default: m.ServiceDetail }))
+);
+const CaseStudiesList = lazy(() =>
+  import('./pages/CaseStudies').then((m) => ({ default: m.CaseStudiesList }))
+);
+const CaseStudyDetail = lazy(() =>
+  import('./pages/CaseStudies').then((m) => ({ default: m.CaseStudyDetail }))
+);
+const BlogList = lazy(() =>
+  import('./pages/Blog').then((m) => ({ default: m.BlogList }))
+);
+const BlogPostDetail = lazy(() =>
+  import('./pages/Blog').then((m) => ({ default: m.BlogPostDetail }))
+);
+const Education = lazy(() => import('./pages/Education'));
+const CourseDetail = lazy(() =>
+  import('./pages/Education').then((m) => ({ default: m.CourseDetail }))
+);
+const CourseApplication = lazy(() => import('./pages/CourseApplication'));
+const StudentPortal = lazy(() => import('./pages/StudentPortal'));
+const StudentAccessSetup = lazy(() => import('./pages/StudentAccessSetup'));
+const ApplicationSecurityChecker = lazy(() => import('./pages/ApplicationSecurityChecker'));
+const Contact = lazy(() => import('./pages/Contact'));
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
+const TermsOfService = lazy(() => import('./pages/TermsOfService'));
+const CookiePolicy = lazy(() => import('./pages/CookiePolicy'));
+const WebDevelopment = lazy(() => import('./pages/WebDevelopment'));
+const EducationConsultant = lazy(() => import('./pages/EducationConsultant'));
+const AgentRegistration = lazy(() => import('./pages/AgentRegistration'));
+const StudentApplication = lazy(() => import('./pages/StudentApplication'));
+const UniversityCourses = lazy(() => import('./pages/UniversityCourses'));
+const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
+const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'));
+const AdminOverview = lazy(() => import('./pages/admin/AdminOverview'));
+const AdminBlog = lazy(() => import('./pages/admin/AdminBlog'));
+const AdminCaseStudies = lazy(() => import('./pages/admin/AdminCaseStudies'));
+const AdminServices = lazy(() => import('./pages/admin/AdminServices'));
+const AdminLmsContent = lazy(() => import('./pages/admin/AdminLmsContent'));
+const AdminStudentIntake = lazy(() => import('./pages/admin/AdminStudentIntake'));
+const AdminContacts = lazy(() => import('./pages/admin/AdminContacts'));
+const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
+const AdminSettings = lazy(() => import('./pages/admin/AdminSettings'));
+const AdminPenTestResults = lazy(() => import('./pages/admin/AdminPenTestResults'));
+const AdminAgents = lazy(() => import('./pages/admin/AdminAgents'));
+const AdminUniversities = lazy(() => import('./pages/admin/AdminUniversities'));
+const AdminTestimonials = lazy(() => import('./pages/admin/AdminTestimonials'));
+const AgentPortal = lazy(() => import('./pages/AgentPortal'));
+const AgentLogin = lazy(() => import('./pages/AgentLogin'));
+
+function App() {
+  return (
+    <ThemeProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <ScrollToTop />
+          <Suspense fallback={<div className="min-h-screen" />}>
+            <Routes>
+              <Route path="/" element={<MainLayout />}>
+                <Route index element={<Home />} />
+                <Route path="about" element={<About />} />
+                <Route path="services" element={<Services />} />
+                <Route path="services/:slug" element={<ServiceDetail />} />
+                <Route path="education" element={<Education />} />
+                <Route path="education/:slug" element={<CourseDetail />} />
+                <Route path="education/:slug/apply" element={<CourseApplication />} />
+                <Route path="student" element={<StudentPortal />} />
+                <Route path="student/access" element={<StudentAccessSetup />} />
+                <Route path="checker" element={<Navigate to="/application-security-checker" replace />} />
+                <Route path="application-security-checker" element={<ApplicationSecurityChecker />} />
+                <Route path="case-studies" element={<CaseStudiesList />} />
+                <Route path="case-studies/:slug" element={<CaseStudyDetail />} />
+                <Route path="blog" element={<BlogList />} />
+                <Route path="blog/:slug" element={<BlogPostDetail />} />
+                <Route path="contact" element={<Contact />} />
+                <Route path="privacy" element={<PrivacyPolicy />} />
+                <Route path="terms" element={<TermsOfService />} />
+                <Route path="cookies" element={<CookiePolicy />} />
+                <Route path="web-development" element={<WebDevelopment />} />
+                <Route path="education-consultant" element={<EducationConsultant />} />
+                <Route path="agent-registration" element={<AgentRegistration />} />
+                <Route path="agent-login" element={<AgentLogin />} />
+                <Route path="agent-portal" element={<AgentPortal />} />
+                <Route path="student-application" element={<StudentApplication />} />
+                <Route path="university/:id/courses" element={<UniversityCourses />} />
+              </Route>
+              <Route path={ADMIN_LOGIN} element={<AdminLogin />} />
+              <Route path={ADMIN_BASE} element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
+                <Route index element={<AdminOverview />} />
+                <Route path="blog" element={<AdminBlog />} />
+                <Route path="case-studies" element={<AdminCaseStudies />} />
+                <Route path="services" element={<AdminServices />} />
+                <Route path="lms" element={<AdminLmsContent />} />
+                <Route path="students" element={<AdminStudentIntake />} />
+                <Route path="contacts" element={<AdminContacts />} />
+                <Route path="pentest-results" element={<AdminPenTestResults />} />
+                <Route path="users" element={<AdminUsers />} />
+                <Route path="agents" element={<AdminAgents />} />
+                <Route path="universities" element={<AdminUniversities />} />
+                <Route path="testimonials" element={<AdminTestimonials />} />
+                <Route path="settings" element={<AdminSettings />} />
+              </Route>
+              <Route path="/admin/*" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
+      </AuthProvider>
+    </ThemeProvider>
+  );
+}
+
+export default App;
