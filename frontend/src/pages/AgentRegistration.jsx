@@ -32,9 +32,8 @@ export default function AgentRegistration() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        setFormData(parsed.formData || {});
-        setFiles(parsed.files || { passportPhoto: '', idDocument: '' });
-        setFileNames(parsed.fileNames || {});
+        if (parsed.formData) setFormData(parsed.formData);
+        if (parsed.fileNames) setFileNames(parsed.fileNames);
       } catch (e) {
         console.error('Failed to load saved progress', e);
       }
@@ -46,7 +45,7 @@ export default function AgentRegistration() {
       try {
         localStorage.setItem('intelera_agent_app_normal', JSON.stringify({ formData, fileNames }));
       } catch (e) {
-        console.error('Failed to save progress', e);
+        console.warn('Failed to save draft progress to localStorage:', e);
       }
     }
   }, [formData, fileNames, submitted]);
