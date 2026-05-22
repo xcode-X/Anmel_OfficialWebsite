@@ -54,7 +54,34 @@ export default defineConfig({
               return 'vendor-react';
             }
           }
-          if (id.includes('/src/pages/admin/')) return 'admin';
+          // Split large admin bundle into focused sub-chunks
+          if (id.includes('/src/pages/admin/')) {
+            if (
+              id.includes('AdminLayout') ||
+              id.includes('AdminOverview') ||
+              id.includes('AdminLogin') ||
+              id.includes('AdminSettings')
+            ) return 'admin-core';
+            if (
+              id.includes('AdminBlog') ||
+              id.includes('AdminCaseStudies') ||
+              id.includes('AdminLmsContent') ||
+              id.includes('AdminServices')
+            ) return 'admin-content';
+            if (
+              id.includes('AdminUsers') ||
+              id.includes('AdminAgents') ||
+              id.includes('AdminContacts') ||
+              id.includes('AdminStudentIntake') ||
+              id.includes('AdminPenTestResults') ||
+              id.includes('AdminTestimonials')
+            ) return 'admin-users';
+            if (
+              id.includes('AdminScholarship') ||
+              id.includes('AdminUniversities')
+            ) return 'admin-scholarships';
+            return 'admin-misc';
+          }
         },
       },
     },
