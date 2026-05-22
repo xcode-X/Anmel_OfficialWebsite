@@ -44,18 +44,6 @@ const statConfig = [
     accentBorder: 'rgba(224,74,111,0.2)',
   },
   {
-    key: 'students',
-    label: 'Scholarship applications',
-    subKey: 'pending',
-    subLabel: 'pending review',
-    alertSub: true,
-    icon: UserCheck,
-    to: `${ADMIN_BASE}/students`,
-    accent: '#0EA5E9',
-    accentBg: 'rgba(14,165,233,0.12)',
-    accentBorder: 'rgba(14,165,233,0.2)',
-  },
-  {
     key: 'scholarships',
     label: 'Scholarships',
     subKey: 'live',
@@ -102,7 +90,6 @@ const quickActions = [
   { to: `${ADMIN_BASE}/blog`,         label: 'New blog post',       icon: BookOpen,    hint: 'Publish an article' },
   { to: `${ADMIN_BASE}/case-studies`, label: 'New case study',      icon: Briefcase,   hint: 'Add a portfolio item' },
   { to: `${ADMIN_BASE}/scholarships/new`, label: 'Add scholarship', icon: Award,       hint: 'Publish a funding listing' },
-  { to: `${ADMIN_BASE}/students`,     label: 'Scholarship application', icon: UserCheck,   hint: 'Review scholarship applicants' },
   { to: `${ADMIN_BASE}/intern-applications`, label: 'Intern application', icon: UserCheck, hint: 'Academy program applicants' },
   { to: `${ADMIN_BASE}/lms`,          label: 'LMS content',         icon: GraduationCap, hint: 'Manage courses' },
   { to: `${ADMIN_BASE}/contacts`,     label: 'View enquiries',      icon: Mail,        hint: 'Respond to messages' },
@@ -319,7 +306,7 @@ export default function AdminOverview() {
             </div>
           </div>
           <Link
-            to={`${ADMIN_BASE}/students`}
+            to={`${ADMIN_BASE}/scholarships`}
             className="shrink-0 flex items-center gap-1.5 text-xs font-semibold text-sky-400 hover:text-sky-300 transition-colors"
           >
             Review applications

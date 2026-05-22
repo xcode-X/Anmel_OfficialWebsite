@@ -14,13 +14,17 @@ import {
   where,
   serverTimestamp,
 } from 'firebase/firestore';
-import { getFirebaseAuth, getFirebaseDb } from './firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getFirebaseAuth, getFirebaseDb, getFirebaseStorage } from './firebase';
 import { APPLICATION_DOC_FIELDS } from './applicationDocFields';
 import {
   isDataUrl,
   parseDataUrl,
   MAX_FIRESTORE_ATTACHMENT_BYTES,
   prepareFirestoreOnlyApplicationPayload,
+  persistApplicationMediaFields,
+  isStorageUnavailableError,
+  extensionForMime,
 } from './applicationMediaUpload';
 
 /** API path → Firestore collection (public creates). */
@@ -297,7 +301,21 @@ export function buildScholarshipApplication(body, scholarshipId) {
   };
 }
 
-/** Store uploaded files in Firestore subcollection (Spark plan — no Storage required). */
+async function uploadScholarshipFileToStorage(appId, field, parsed, fileName) {
+  try {
+    const ext = extensionForMime(parsed.mime);
+    const path = `scholarship-applications/${appId}/${field}.${ext}`;
+    const storageRef = ref(getFirebaseStorage(), path);
+    await uploadBytes(storageRef, parsed.bytes, { contentType: parsed.mime });
+    const downloadUrl = await getDownloadURL(storageRef);
+    return downloadUrl;
+  } catch (e) {
+    console.warn('[scholarship-files] Storage upload failed:', field, e?.message || e);
+    return null;
+  }
+}
+
+/** Store uploads in Firebase Storage when possible; small files also in Firestore subcollection. */
 export async function saveScholarshipApplicationFiles(appId, sourceBody, fileNames = {}) {
   const db = getFirebaseDb();
   const results = [];
@@ -308,38 +326,86 @@ export async function saveScholarshipApplicationFiles(appId, sourceBody, fileNam
 
     const parsed = parseDataUrl(raw);
     const fileName = fileNames[field] || `${field}.pdf`;
-    const ref = doc(db, 'scholarshipApplications', String(appId), 'files', field);
+    const fileRef = doc(db, 'scholarshipApplications', String(appId), 'files', field);
 
     if (!parsed?.bytes?.length) continue;
 
-    if (parsed.bytes.length > MAX_FIRESTORE_ATTACHMENT_BYTES) {
+    const useInline = parsed.bytes.length <= MAX_FIRESTORE_ATTACHMENT_BYTES;
+    let downloadUrl = null;
+
+    if (!useInline) {
+      downloadUrl = await uploadScholarshipFileToStorage(appId, field, parsed, fileName);
+    }
+
+    if (downloadUrl) {
       await setDoc(
-        ref,
+        fileRef,
         stripUndefined({
           field,
           fileName,
           mimeType: parsed.mime,
-          tooLarge: true,
+          downloadUrl,
+          storage: 'firebase',
           size: parsed.bytes.length,
           createdAt: serverTimestamp(),
         }),
       );
-      results.push({ field, tooLarge: true, fileName });
+      await updateDocument(
+        'scholarshipApplications',
+        appId,
+        { [field]: downloadUrl },
+        { resource: 'scholarship-applications' },
+      );
+      results.push({ field, stored: true, fileName, storage: true });
+      continue;
+    }
+
+    if (useInline) {
+      await setDoc(
+        fileRef,
+        stripUndefined({
+          field,
+          fileName,
+          mimeType: parsed.mime,
+          dataUrl: raw,
+          size: parsed.bytes.length,
+          createdAt: serverTimestamp(),
+        }),
+      );
+      results.push({ field, stored: true, fileName });
+      continue;
+    }
+
+    downloadUrl = await uploadScholarshipFileToStorage(appId, field, parsed, fileName);
+    if (downloadUrl) {
+      await setDoc(
+        fileRef,
+        stripUndefined({
+          field,
+          fileName,
+          mimeType: parsed.mime,
+          downloadUrl,
+          storage: 'firebase',
+          size: parsed.bytes.length,
+          createdAt: serverTimestamp(),
+        }),
+      );
+      results.push({ field, stored: true, fileName, storage: true });
       continue;
     }
 
     await setDoc(
-      ref,
+      fileRef,
       stripUndefined({
         field,
         fileName,
         mimeType: parsed.mime,
-        dataUrl: raw,
+        tooLarge: true,
         size: parsed.bytes.length,
         createdAt: serverTimestamp(),
       }),
     );
-    results.push({ field, stored: true, fileName });
+    results.push({ field, tooLarge: true, fileName });
   }
 
   return results;
@@ -365,10 +431,22 @@ export async function mergeApplicationWithFiles(app) {
     else if (f.downloadUrl) merged[key] = f.downloadUrl;
   }
 
+  for (const field of APPLICATION_DOC_FIELDS) {
+    const v = merged[field];
+    if (typeof v === 'string' && (v.startsWith('http') || v.startsWith('data:') || v.startsWith('/'))) {
+      if (!merged._applicationFiles?.some((f) => (f.field || f.id) === field)) {
+        merged._applicationFiles = [...(merged._applicationFiles || []), { field, downloadUrl: v.startsWith('data:') ? v : v }];
+      }
+    }
+  }
+
+  const pending = files.some((f) => f.tooLarge) && !files.some((f) => (f.field || f.id) && (f.dataUrl || f.downloadUrl));
+  merged.documentsPendingCollection = pending;
+
   return merged;
 }
 
-/** Create scholarship application + store documents in Firestore (real-time, no Blaze Storage). */
+/** Create scholarship application + store documents (Storage preferred, Firestore fallback). */
 export async function createScholarshipApplicationRecord(rawBody, scholarshipId) {
   const fileNames = rawBody.documentFileNames || {};
   let scholarshipTitle = rawBody.scholarshipTitle || '';
@@ -376,30 +454,42 @@ export async function createScholarshipApplicationRecord(rawBody, scholarshipId)
     const sch = await getScholarshipById(scholarshipId);
     scholarshipTitle = sch?.title || '';
   }
-  const bodyWithScholarship = buildScholarshipApplication(
+  let bodyWithScholarship = buildScholarshipApplication(
     { ...rawBody, scholarshipTitle },
     scholarshipId,
   );
-  const fsPayload = prepareFirestoreOnlyApplicationPayload(bodyWithScholarship, fileNames);
 
+  try {
+    bodyWithScholarship = await persistApplicationMediaFields(
+      bodyWithScholarship,
+      'scholarship-applications',
+    );
+  } catch (e) {
+    if (!isStorageUnavailableError(e)) throw e;
+  }
+
+  const fsPayload = prepareFirestoreOnlyApplicationPayload(bodyWithScholarship, fileNames);
   const row = await createDocument('scholarshipApplications', fsPayload);
   const fileResults = await saveScholarshipApplicationFiles(row._id, rawBody, fileNames);
   const storedCount = fileResults.filter((r) => r.stored).length;
+  const hasTooLarge = fileResults.some((r) => r.tooLarge);
 
-  if (fileResults.length > 0) {
-    await updateDocument(
-      'scholarshipApplications',
-      row._id,
-      {
-        documentsStorage: storedCount > 0 ? 'firestore-files' : 'firestore-metadata',
-        documentsPendingCollection: fileResults.some((r) => r.tooLarge),
-        storedAttachmentsCount: storedCount,
-      },
-      { resource: 'scholarship-applications' },
-    );
-  }
+  await updateDocument(
+    'scholarshipApplications',
+    row._id,
+    {
+      documentsStorage: fileResults.some((r) => r.storage)
+        ? 'firebase-storage'
+        : storedCount > 0
+          ? 'firestore-files'
+          : 'firestore-metadata',
+      documentsPendingCollection: hasTooLarge,
+      storedAttachmentsCount: storedCount,
+    },
+    { resource: 'scholarship-applications' },
+  );
 
-  return mergeApplicationWithFiles({ ...row, ...fsPayload });
+  return mergeApplicationWithFiles({ ...row, ...fsPayload, ...bodyWithScholarship });
 }
 
 export function slugifyTitle(title) {

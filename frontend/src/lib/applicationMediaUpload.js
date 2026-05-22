@@ -51,7 +51,7 @@ export function prepareFirestoreOnlyApplicationPayload(body, fileNames = {}) {
       ...stripped,
       documentFileNames,
       documentsStorage: 'firestore',
-      documentsPendingCollection: submittedDocFields.length > 0,
+      documentsPendingCollection: false,
     },
     { submittedDocFields },
   );
@@ -88,7 +88,7 @@ export function parseDataUrl(dataUrl) {
   }
 }
 
-function extensionForMime(mime) {
+export function extensionForMime(mime) {
   if (MIME_EXT[mime]) return MIME_EXT[mime];
   const part = mime.split('/')[1];
   if (!part) return 'bin';

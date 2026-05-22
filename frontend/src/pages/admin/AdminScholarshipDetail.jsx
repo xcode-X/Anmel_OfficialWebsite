@@ -8,6 +8,7 @@ import {
 import { scholarshipsApi } from '../../lib/api';
 import { subscribeContentStream } from '../../lib/contentStream';
 import { ADMIN_BASE } from '../../lib/adminPaths';
+import ScholarshipApplicationReview from '../../components/admin/ScholarshipApplicationReview';
 
 const STATUS_OPTIONS = [
   { value: 'pending', label: 'Pending', cls: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
@@ -16,10 +17,8 @@ const STATUS_OPTIONS = [
   { value: 'rejected', label: 'Rejected', cls: 'text-red-400 bg-red-500/10 border-red-500/20' },
 ];
 
-const DETAIL_PATH = `${ADMIN_BASE}/students`;
-
 export default function AdminScholarshipDetail() {
-  const { id } = useParams();
+  const { id, appId } = useParams();
   const navigate = useNavigate();
   const [scholarship, setScholarship] = useState(null);
   const [applications, setApplications] = useState([]);
@@ -105,8 +104,18 @@ export default function AdminScholarshipDetail() {
   };
 
   const openApplication = (app) => {
-    navigate(`${DETAIL_PATH}/${app._id}`, { state: { application: app } });
+    navigate(`${ADMIN_BASE}/scholarships/${id}/applications/${app._id}`);
   };
+
+  if (appId) {
+    return (
+      <ScholarshipApplicationReview
+        scholarshipId={id}
+        appId={appId}
+        onBack={() => navigate(`${ADMIN_BASE}/scholarships/${id}`)}
+      />
+    );
+  }
 
   if (loading) {
     return (

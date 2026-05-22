@@ -74,6 +74,24 @@ export function subscribePublishedCollection(
   });
 }
 
+/** Live updates for scholarship application file attachments (subcollection). */
+export function subscribeScholarshipApplicationFiles(appId, callback) {
+  if (!appId) return () => {};
+  try {
+    const collRef = collection(getFirebaseDb(), 'scholarshipApplications', String(appId), 'files');
+    return onSnapshot(
+      collRef,
+      (snap) => {
+        callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      },
+      (err) => console.warn(`[firestore] scholarshipApplications/${appId}/files:`, err.message),
+    );
+  } catch (e) {
+    console.warn('[firestore] subscribe application files failed:', e.message);
+    return () => {};
+  }
+}
+
 /** Live updates for a collection (admin dashboards). Sorts client-side so missing indexes/fields still work. */
 export function subscribeFirestoreCollection(collectionName, callback) {
   try {

@@ -146,22 +146,25 @@ async function prepareApplicationPayload(path, body) {
   if (!isApplicationSubmitPath(path)) return body;
 
   const fileNames = body.documentFileNames || {};
+  const isScholarshipApp = /^\/scholarships\/[^/]+\/applications$/.test(
+    String(path || '').replace(/\?.*$/, '').replace(/\/$/, ''),
+  );
 
-  if (!USE_FIREBASE_STORAGE) {
-    return prepareFirestoreOnlyApplicationPayload(body, fileNames);
+  if (USE_FIREBASE_STORAGE || isScholarshipApp) {
+    try {
+      return await persistApplicationMediaFields(body, storageCategoryForPath(path));
+    } catch (uploadErr) {
+      if (!isStorageUnavailableError(uploadErr)) throw uploadErr;
+      return {
+        ...prepareFirestoreOnlyApplicationPayload(body, fileNames),
+        documentsUploadFailed: true,
+        requiredDocumentsNote:
+          'Your application was saved. Document files were recorded by name; our team may contact you to collect files.',
+      };
+    }
   }
 
-  try {
-    return await persistApplicationMediaFields(body, storageCategoryForPath(path));
-  } catch (uploadErr) {
-    if (!isStorageUnavailableError(uploadErr)) throw uploadErr;
-    return {
-      ...prepareFirestoreOnlyApplicationPayload(body, fileNames),
-      documentsUploadFailed: true,
-      requiredDocumentsNote:
-        'Your application was saved. Document files were recorded by name; our team may contact you to collect files.',
-    };
-  }
+  return prepareFirestoreOnlyApplicationPayload(body, fileNames);
 }
 
 /** Public POST — never attach admin token; falls back to Firestore when API/DB is down. */

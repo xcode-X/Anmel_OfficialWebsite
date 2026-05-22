@@ -54,7 +54,6 @@ const AdminBlog = lazy(() => import('./pages/admin/AdminBlog'));
 const AdminCaseStudies = lazy(() => import('./pages/admin/AdminCaseStudies'));
 const AdminLmsContent = lazy(() => import('./pages/admin/AdminLmsContent'));
 const AdminStudentIntake = lazy(() => import('./pages/admin/AdminStudentIntake'));
-const AdminScholarshipApplications = lazy(() => import('./pages/admin/AdminScholarshipApplications'));
 const AdminContacts = lazy(() => import('./pages/admin/AdminContacts'));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
 const AdminSettings = lazy(() => import('./pages/admin/AdminSettings'));
@@ -135,8 +134,8 @@ function App() {
                 <Route path="blog" element={<AdminBlog />} />
                 <Route path="case-studies" element={<AdminCaseStudies />} />
                 <Route path="lms" element={<AdminLmsContent />} />
-                <Route path="students" element={<AdminScholarshipApplications />} />
-                <Route path="students/:id" element={<AdminScholarshipApplications />} />
+                <Route path="students" element={<Navigate to={`${ADMIN_BASE}/scholarships`} replace />} />
+                <Route path="students/:id" element={<Navigate to={`${ADMIN_BASE}/scholarships`} replace />} />
                 <Route path="intern-applications" element={<AdminStudentIntake />} />
                 <Route path="intern-applications/:id" element={<AdminStudentIntake />} />
                 <Route path="contacts" element={<AdminContacts />} />
@@ -148,6 +147,7 @@ function App() {
                 <Route path="scholarships/new" element={<AdminScholarshipForm />} />
                 <Route path="scholarships/:id/edit" element={<AdminScholarshipForm />} />
                 <Route path="scholarships/:id" element={<AdminScholarshipDetail />} />
+                <Route path="scholarships/:id/applications/:appId" element={<AdminScholarshipDetail />} />
                 <Route path="testimonials" element={<AdminTestimonials />} />
                 <Route path="settings" element={<AdminSettings />} />
               </Route>

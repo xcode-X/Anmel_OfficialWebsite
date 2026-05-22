@@ -30,7 +30,6 @@ const nav = [
   { to: `${ADMIN_BASE}/blog`,        label: 'Blog',           icon: BookOpen },
   { to: `${ADMIN_BASE}/case-studies`,label: 'Case Studies',   icon: Briefcase },
   { to: `${ADMIN_BASE}/lms`,         label: 'LMS Content',    icon: GraduationCap },
-  { to: `${ADMIN_BASE}/students`,    label: 'Scholarship application', icon: Award },
   { to: `${ADMIN_BASE}/intern-applications`, label: 'Intern application', icon: UserCheck },
   { to: `${ADMIN_BASE}/contacts`,    label: 'Contacts',       icon: Mail },
   { to: `${ADMIN_BASE}/pentest-results`, label: 'Pen Testing', icon: Terminal },
