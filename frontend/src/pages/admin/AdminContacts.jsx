@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import {
   Mail,
   MailOpen,
@@ -16,13 +16,21 @@ export default function AdminContacts() {
   const [list, setList] = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const hasLoaded = useRef(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     try {
       const data = await contactApi.list();
       setList(Array.isArray(data) ? data : []);
-    } catch {
-      setList([]);
+      setError('');
+      hasLoaded.current = true;
+    } catch (e) {
+      if (!quiet) {
+        setError(e.message || 'Failed to load submissions');
+        if (!hasLoaded.current) setList([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -31,9 +39,15 @@ export default function AdminContacts() {
   useEffect(() => {
     load();
     const cleanup = contactApi.subscribe((rows) => {
-      if (Array.isArray(rows)) setList(rows);
-      else load();
-      setLoading(false);
+      if (Array.isArray(rows) && rows.length > 0) {
+        setList(rows);
+        setLoading(false);
+        hasLoaded.current = true;
+      } else if (!Array.isArray(rows)) {
+        load(true);
+      } else if (hasLoaded.current) {
+        load(true);
+      }
     });
     return cleanup;
   }, [load]);
@@ -69,6 +83,10 @@ export default function AdminContacts() {
         )}
       </div>
 
+      {error && (
+        <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">{error}</p>
+      )}
+
       <div className="rounded-2xl border border-white/8 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left min-w-[640px]">
@@ -101,7 +119,7 @@ export default function AdminContacts() {
                 </tr>
               )}
 
-              {list.map((c) => (
+              {!loading && list.map((c) => (
                 <Fragment key={c._id}>
                   <tr
                     className={`group transition-colors hover:bg-white/3 ${!c.read ? 'bg-[#2FA084]/4' : ''}`}

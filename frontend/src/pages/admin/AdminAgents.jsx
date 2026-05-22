@@ -42,9 +42,19 @@ export default function AdminAgents() {
 
   useEffect(() => {
     load();
-    const cleanupRealtime = agentsApi.subscribe(() => {
+    const cleanupRealtime = agentsApi.subscribe((rows) => {
       setLive(true);
-      load(true);
+      if (Array.isArray(rows) && rows.length > 0) {
+        setAgents(rows);
+        const cur = selectedRef.current;
+        if (cur) {
+          const aid = cur._id || cur.id;
+          const updated = rows.find((a) => (a._id || a.id) === aid);
+          if (updated) setSelected(updated);
+        }
+      } else {
+        load(true);
+      }
     });
     const onVis = () => {
       if (document.visibilityState === 'visible') load(true);
@@ -90,6 +100,8 @@ export default function AdminAgents() {
         onApprove={agentsApi.adminApprove}
         onReject={agentsApi.adminReject}
         onResend={agentsApi.adminResendCredentials}
+        onSuspend={agentsApi.adminSuspend}
+        onDelete={agentsApi.adminDelete}
         onRefresh={() => load(true)}
       />
     );

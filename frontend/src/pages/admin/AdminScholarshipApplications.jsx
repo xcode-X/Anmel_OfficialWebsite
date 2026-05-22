@@ -307,6 +307,7 @@ export default function AdminScholarshipApplications() {
   const [sseOk, setSseOk] = useState(false);
   const [filter, setFilter] = useState('all');
   const retryRef = useRef(null);
+  const hasLoaded = useRef(false);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -315,6 +316,7 @@ export default function AdminScholarshipApplications() {
       const data = await scholarshipApplicationsApi.list();
       setDbDown(false);
       setRows(Array.isArray(data) ? data : []);
+      hasLoaded.current = true;
     } catch (err) {
       if (err.message === 'db_unavailable') {
         setDbDown(true);
@@ -333,11 +335,16 @@ export default function AdminScholarshipApplications() {
     load();
     const cleanupSse = scholarshipApplicationsApi.subscribe((list) => {
       setSseOk(true);
-      if (Array.isArray(list)) {
+      if (Array.isArray(list) && list.length > 0) {
         setDbDown(false);
         setRows(list);
         setLoading(false);
-      } else load(true);
+        hasLoaded.current = true;
+      } else if (!Array.isArray(list)) {
+        load(true);
+      } else if (hasLoaded.current) {
+        load(true);
+      }
     });
     const pollId = window.setInterval(() => load(true), 20000);
     const onVis = () => { if (document.visibilityState === 'visible') load(true); };

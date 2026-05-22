@@ -932,6 +932,41 @@ export async function rejectAgentInFirestore(agentId, notes = '') {
   return { ok: true, message: 'Agent rejected.' };
 }
 
+/** Suspend approved agent (disable portal login). */
+export async function suspendAgentInFirestore(agentId) {
+  await ensureAdminFirestoreProfile();
+
+  const agent = await getDocument('agents', String(agentId));
+  if (!agent) throw new Error('Agent not found');
+  if (agent.status === 'Suspended') throw new Error('Agent is already suspended');
+
+  await updateDocument(
+    'agents',
+    String(agentId),
+    {
+      status: 'Suspended',
+      loginEnabled: false,
+    },
+    { resource: 'agents' },
+  );
+
+  if (agent.email) {
+    try {
+      const users = await listCollection('users', { max: 50 });
+      const match = users.find(
+        (u) => String(u.email || '').toLowerCase() === String(agent.email).toLowerCase(),
+      );
+      if (match?._id) {
+        await updateDocument('users', match._id, { loginEnabled: false, status: 'suspended' });
+      }
+    } catch { /* optional */ }
+  }
+
+  await bumpRealtime('agents');
+  await bumpRealtime('users');
+  return { ok: true, message: 'Agent suspended.' };
+}
+
 /** Public agent application when API is unavailable. */
 export async function createAgentApplication(payload) {
   const agentCode = generateAgentCode();

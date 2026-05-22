@@ -19,6 +19,7 @@ import {
   ChevronRight,
   LogOut,
   ExternalLink,
+  Menu,
 } from 'lucide-react';
 import { useAuth } from '../../context/AppContext';
 import logoAnmel from '../../images/logo_anmel_transparent.png';
@@ -43,6 +44,7 @@ const nav = [
 
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -58,9 +60,23 @@ export default function AdminLayout() {
   return (
     <div className="min-h-screen bg-[#060d18] flex text-white">
 
-      {/* â”€â”€ SIDEBAR â”€â”€ */}
+      {mobileNavOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+          aria-label="Close menu"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
+      {/* SIDEBAR */}
       <aside
-        className={`${sidebarOpen ? 'w-60' : 'w-[60px]'} bg-[#0A0F1A] border-r border-white/6 flex flex-col transition-all duration-300 shrink-0 relative z-30`}
+        className={`
+          ${sidebarOpen ? 'w-60' : 'w-[60px]'}
+          bg-[#0A0F1A] border-r border-white/6 flex flex-col transition-all duration-300 shrink-0 relative z-50
+          fixed lg:static inset-y-0 left-0
+          ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        `}
       >
         {/* Logo bar */}
         <div className="h-14 flex items-center justify-between px-3 border-b border-white/6 shrink-0">
@@ -76,7 +92,10 @@ export default function AdminLayout() {
           )}
           <button
             type="button"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
+            onClick={() => {
+              if (window.innerWidth < 1024) setMobileNavOpen(false);
+              else setSidebarOpen(!sidebarOpen);
+            }}
             className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/6 transition shrink-0 ml-auto"
             aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
           >
@@ -120,6 +139,7 @@ export default function AdminLayout() {
                 key={item.to}
                 to={item.to}
                 end={item.end}
+                onClick={() => setMobileNavOpen(false)}
                 className={({ isActive }) =>
                   `group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150
                   ${isActive
@@ -168,10 +188,17 @@ export default function AdminLayout() {
       {/* â”€â”€ MAIN CONTENT â”€â”€ */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Top bar */}
-        <header className="h-14 sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-white/6 bg-[#060d18]/95 px-5 backdrop-blur-md shrink-0">
+        <header className="h-14 sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-white/6 bg-[#060d18]/95 px-4 sm:px-5 backdrop-blur-md shrink-0">
           <div className="flex items-center gap-3">
-            {/* breadcrumb placeholder â€” pages can override via portal if needed */}
-            <div className="w-1.5 h-5 rounded-full bg-[#2FA084]/50" aria-hidden />
+            <button
+              type="button"
+              className="lg:hidden p-2 rounded-lg text-white/50 hover:text-white hover:bg-white/6 transition"
+              aria-label="Open menu"
+              onClick={() => setMobileNavOpen(true)}
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="w-1.5 h-5 rounded-full bg-[#2FA084]/50 hidden sm:block" aria-hidden />
             <span className="text-sm font-semibold text-white/70">Admin</span>
           </div>
           <div className="flex items-center gap-3">
@@ -192,7 +219,7 @@ export default function AdminLayout() {
         </header>
 
         {/* Page content */}
-        <main className="relative flex-1 overflow-auto p-5 lg:p-8">
+        <main className="relative flex-1 overflow-auto p-4 sm:p-5 lg:p-8 w-full">
           <Suspense
             fallback={
               <div className="flex items-center justify-center py-24 text-white/40">

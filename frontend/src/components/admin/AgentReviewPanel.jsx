@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   CheckCircle2, XCircle, User, Briefcase, Send, ArrowLeft, MonitorCheck,
-  FileText, Eye, Download, Loader2,
+  FileText, Eye, Download, Loader2, Ban, Trash2,
 } from 'lucide-react';
 import { agentsApi } from '../../lib/api';
 import {
@@ -133,7 +133,7 @@ function AgentDocumentCard({ fieldKey, label, url, idType }) {
   );
 }
 
-export default function AgentReviewPanel({ agent, onBack, onApprove, onReject, onResend, onRefresh }) {
+export default function AgentReviewPanel({ agent, onBack, onApprove, onReject, onResend, onSuspend, onDelete, onRefresh }) {
   const [rejectNotes, setRejectNotes] = useState('');
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -204,6 +204,37 @@ export default function AgentReviewPanel({ agent, onBack, onApprove, onReject, o
     try {
       await onResend(agentId);
       setMsg('✓ Credentials email resent.');
+    } catch (e) {
+      setMsg(`Error: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const doSuspend = async () => {
+    if (!window.confirm(`Suspend ${display.fullName || display.email}? They will not be able to sign in.`)) return;
+    setLoading(true);
+    setMsg('');
+    try {
+      await onSuspend(agentId);
+      setMsg('✓ Agent account suspended. Portal login is disabled.');
+      onRefresh();
+    } catch (e) {
+      setMsg(`Error: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const doDelete = async () => {
+    if (!window.confirm(`Permanently delete the application for ${display.fullName || display.email}? This cannot be undone.`)) return;
+    setLoading(true);
+    setMsg('');
+    try {
+      await onDelete(agentId);
+      setMsg('✓ Agent application deleted.');
+      onRefresh();
+      onBack();
     } catch (e) {
       setMsg(`Error: ${e.message}`);
     } finally {
@@ -291,6 +322,23 @@ export default function AgentReviewPanel({ agent, onBack, onApprove, onReject, o
             <Send className="w-4 h-4" />
             Resend credentials email
           </button>
+          {onSuspend && display.status !== 'Suspended' && (
+            <button
+              type="button"
+              onClick={doSuspend}
+              disabled={loading}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl border border-amber-500/30 px-4 py-2.5 text-sm font-semibold text-amber-400 hover:bg-amber-500/10 transition disabled:opacity-50"
+            >
+              <Ban className="w-4 h-4" />
+              Suspend account
+            </button>
+          )}
+        </div>
+      )}
+
+      {display.status === 'Suspended' && (
+        <div className="rounded-2xl border border-stone-500/25 bg-stone-500/5 p-5">
+          <p className="text-sm text-stone-300">This agent account is suspended and cannot sign in to the portal.</p>
         </div>
       )}
 
@@ -460,6 +508,20 @@ export default function AgentReviewPanel({ agent, onBack, onApprove, onReject, o
             </p>
           )}
         </div>
+
+        {onDelete && (
+          <section className="pt-4 border-t border-red-500/15">
+            <button
+              type="button"
+              onClick={doDelete}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-red-500/30 bg-red-500/10 text-sm font-bold text-red-400 hover:bg-red-500/20 transition disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete application permanently
+            </button>
+          </section>
+        )}
       </div>
     </motion.div>
   );

@@ -57,6 +57,7 @@ import {
   createAgentApplication,
   approveAgentInFirestore,
   rejectAgentInFirestore,
+  suspendAgentInFirestore,
   ensureAdminFirestoreProfile,
 } from './firestoreClient';
 import {
@@ -411,7 +412,10 @@ export const studentRegistrations = {
   getById: (id) =>
     adminWrite(
       () => api.get(`/student-registrations/${id}`),
-      () => getDocument('studentRegistrations', id),
+      async () => {
+        const row = await getDocument('studentRegistrations', id);
+        return row ? mergeApplicationWithFiles(row) : null;
+      },
     ),
 
   update: (id, payload) => api.patch(`/student-registrations/${id}`, payload),
@@ -556,7 +560,9 @@ export const securityChecker = {
     } catch { /* optional */ }
     cleanups.push(
       subscribeContentStream((resource) => {
-        if (resource === 'pentest-results') onChange?.();
+        if (resource === 'pentest-results') {
+          securityChecker.listRecords().then((rows) => onChange(rows)).catch(() => {});
+        }
       }),
     );
     return () => cleanups.forEach((fn) => fn());
@@ -612,9 +618,45 @@ export const scholarshipsApi = {
     ),
   share: (id) => request(`/scholarships/${id}/share`, { method: 'POST' }),
   apply: (id, data) => publicPost(`/scholarships/${id}/applications`, data),
-  listApplications: (id) => request(`/scholarships/${id}/applications`),
+  listApplications: async (id) => {
+    try {
+      const fromApi = await request(`/scholarships/${id}/applications`);
+      if (Array.isArray(fromApi) && fromApi.length > 0) return fromApi;
+    } catch (err) {
+      if (!isApiUnavailableError(err) && err?.message !== 'db_unavailable') throw err;
+    }
+    const all = await listCollection('scholarshipApplications', { max: 500 });
+    return all.filter((a) => String(a.scholarshipId) === String(id));
+  },
   updateApplicationStatus: (scholarshipId, appId, status) =>
-    request(`/scholarships/${scholarshipId}/applications/${appId}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    cmsWrite(
+      () =>
+        request(`/scholarships/${scholarshipId}/applications/${appId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status }),
+        }),
+      async () => {
+        const row = await updateDocument('scholarshipApplications', appId, { status });
+        const full = await mergeApplicationWithFiles(row);
+        sendScholarshipStatusUpdateEmail({
+          email: full.email,
+          fullName: full.fullName,
+          scholarshipTitle: full.scholarshipTitle,
+          status,
+        }).catch(() => {});
+        return full;
+      },
+    ),
+  subscribeApplications: (scholarshipId, onChange) => {
+    try {
+      return subscribeFirestoreCollection('scholarshipApplications', (rows) => {
+        const filtered = rows.filter((a) => String(a.scholarshipId) === String(scholarshipId));
+        onChange(filtered);
+      });
+    } catch {
+      return () => {};
+    }
+  },
   subscribe: (onChange, { admin = false } = {}) => {
     const cleanups = [];
     try {
@@ -821,6 +863,16 @@ export const agentsApi = {
       () => updateDocument('agents', id, data, { resource: 'agents' }),
     ),
   adminResendCredentials: (id) => request(`/agents/${id}/resend-credentials`, { method: 'POST', body: '{}' }),
+  adminSuspend: (id) =>
+    adminWrite(
+      () => request(`/agents/${id}/suspend`, { method: 'PATCH', body: '{}' }),
+      () => suspendAgentInFirestore(id),
+    ),
+  adminDelete: (id) =>
+    adminWrite(
+      () => request(`/agents/${id}`, { method: 'DELETE' }),
+      () => deleteDocument('agents', id, { resource: 'agents' }),
+    ),
 
   subscribe: (onChange) => {
     try {

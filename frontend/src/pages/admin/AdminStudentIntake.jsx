@@ -1,6 +1,8 @@
 ﻿import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, auth, studentRegistrations } from '../../lib/api';
+import { mergeApplicationWithFiles } from '../../lib/firestoreClient';
+import { subscribeFirestoreDocument } from '../../lib/firestoreRealtime';
 import { ADMIN_BASE } from '../../lib/adminPaths';
 import { getAcademyCourseTitle, isInternApplication } from '../../lib/applicationTypes';
 import {
@@ -227,6 +229,21 @@ function ApplicationDetail({ id, onClose, onRefresh }) {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const cleanup = subscribeFirestoreDocument('studentRegistrations', id, async (row) => {
+      if (row) {
+        try {
+          const merged = await mergeApplicationWithFiles(row);
+          setDetail(merged);
+        } catch {
+          setDetail(row);
+        }
+        setLoading(false);
+      }
+    });
+    return cleanup;
+  }, [id]);
 
   const doFlag = async (patch) => {
     setBusy('flag');

@@ -372,6 +372,38 @@ router.patch('/:id/reject', authMiddleware, adminOnly, async (req, res) => {
   res.json({ ok: true, message: 'Agent rejected. A notification email has been sent.' });
 });
 
+// ── Admin: suspend ────────────────────────────────────────────────────────────
+router.patch('/:id/suspend', authMiddleware, adminOnly, async (req, res) => {
+  if (!isDbConnected()) return res.status(503).json({ error: 'Database unavailable' });
+  const agent = await Agent.findById(req.params.id);
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
+  if (agent.status === 'Suspended') return res.status(400).json({ error: 'Agent is already suspended' });
+
+  agent.status = 'Suspended';
+  agent.loginEnabled = false;
+  await agent.save();
+
+  emitAgentChanged();
+  publishContentChange('agents');
+  publishContentChange('users');
+
+  res.json({ ok: true, message: 'Agent suspended. Portal login is disabled.' });
+});
+
+// ── Admin: delete application ─────────────────────────────────────────────────
+router.delete('/:id', authMiddleware, adminOnly, async (req, res) => {
+  if (!isDbConnected()) return res.status(503).json({ error: 'Database unavailable' });
+  const agent = await Agent.findById(req.params.id);
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+  await Agent.findByIdAndDelete(req.params.id);
+  emitAgentChanged();
+  publishContentChange('agents');
+  publishContentChange('users');
+
+  res.json({ ok: true, message: 'Agent application deleted.' });
+});
+
 // ── Admin: update notes / status ──────────────────────────────────────────────
 router.patch('/:id', authMiddleware, adminOnly, async (req, res) => {
   if (!isDbConnected()) return res.status(503).json({ error: 'Database unavailable' });

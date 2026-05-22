@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Award, Building2, Calendar, DollarSign, MapPin,
-  RefreshCw, Pencil, Users, Mail, Phone, Loader2,
+  RefreshCw, Pencil, Users, Mail, Phone, Loader2, Eye, Wifi,
 } from 'lucide-react';
 import { scholarshipsApi } from '../../lib/api';
 import { subscribeContentStream } from '../../lib/contentStream';
@@ -16,12 +16,16 @@ const STATUS_OPTIONS = [
   { value: 'rejected', label: 'Rejected', cls: 'text-red-400 bg-red-500/10 border-red-500/20' },
 ];
 
+const DETAIL_PATH = `${ADMIN_BASE}/students`;
+
 export default function AdminScholarshipDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [scholarship, setScholarship] = useState(null);
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [live, setLive] = useState(false);
 
   const listPath = `${ADMIN_BASE}/scholarships`;
   const editPath = `${ADMIN_BASE}/scholarships/${id}/edit`;
@@ -32,7 +36,7 @@ export default function AdminScholarshipDetail() {
       const data = await scholarshipsApi.listApplications(id);
       setApplications(Array.isArray(data) ? data : []);
     } catch {
-      setApplications([]);
+      if (!quiet) setApplications([]);
     } finally {
       setRefreshing(false);
     }
@@ -55,7 +59,12 @@ export default function AdminScholarshipDetail() {
   }, [id]);
 
   useEffect(() => {
+    setLoading(true);
     load();
+    const cleanupFs = scholarshipsApi.subscribeApplications(id, (rows) => {
+      setLive(true);
+      if (Array.isArray(rows)) setApplications(rows);
+    });
     const cleanupStream = subscribeContentStream((resource, meta) => {
       if (resource === 'scholarships') {
         if (meta?.action === 'deleted' && meta?.scholarshipId === id) {
@@ -78,6 +87,7 @@ export default function AdminScholarshipDetail() {
     };
     document.addEventListener('visibilitychange', onVis);
     return () => {
+      cleanupFs();
       cleanupStream();
       document.removeEventListener('visibilitychange', onVis);
     };
@@ -85,11 +95,17 @@ export default function AdminScholarshipDetail() {
 
   const handleStatusChange = async (appId, status) => {
     try {
-      await scholarshipsApi.updateApplicationStatus(id, appId, status);
-      setApplications((prev) => prev.map((a) => (a._id === appId ? { ...a, status } : a)));
+      const updated = await scholarshipsApi.updateApplicationStatus(id, appId, status);
+      setApplications((prev) =>
+        prev.map((a) => (a._id === appId ? { ...a, ...(updated || {}), status } : a)),
+      );
     } catch (err) {
       alert(err.message);
     }
+  };
+
+  const openApplication = (app) => {
+    navigate(`${DETAIL_PATH}/${app._id}`, { state: { application: app } });
   };
 
   if (loading) {
@@ -159,8 +175,13 @@ export default function AdminScholarshipDetail() {
             <span className="text-xs font-semibold text-white/40 bg-white/5 border border-white/10 rounded-full px-2.5 py-0.5">
               {applications.length} total
             </span>
+            {live && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                <Wifi className="w-3 h-3" /> Live
+              </span>
+            )}
           </div>
-          <p className="text-xs text-white/30">Updates in real time when students apply</p>
+          <p className="text-xs text-white/30">New submissions appear instantly — open a row for full details &amp; documents</p>
         </div>
 
         {applications.length === 0 ? (
@@ -171,7 +192,7 @@ export default function AdminScholarshipDetail() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
+            <table className="w-full text-sm text-left min-w-[720px]">
               <thead className="bg-white/3 border-b border-white/8 text-white/40 text-xs uppercase tracking-wider">
                 <tr>
                   <th className="px-5 py-3.5 font-medium">Applicant</th>
@@ -180,14 +201,20 @@ export default function AdminScholarshipDetail() {
                   <th className="px-5 py-3.5 font-medium hidden lg:table-cell">Documents</th>
                   <th className="px-5 py-3.5 font-medium">Submitted</th>
                   <th className="px-5 py-3.5 font-medium">Status</th>
+                  <th className="px-5 py-3.5 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
                 {applications.map((app) => {
                   const statusMeta = STATUS_OPTIONS.find((s) => s.value === app.status) || STATUS_OPTIONS[0];
                   return (
-                    <motion.tr key={app._id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-                      className="hover:bg-white/4 transition">
+                    <motion.tr
+                      key={app._id}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="hover:bg-white/4 transition cursor-pointer"
+                      onClick={() => openApplication(app)}
+                    >
                       <td className="px-5 py-4">
                         <p className="font-semibold text-white">{app.fullName}</p>
                         <p className="text-xs text-white/40 mt-0.5">{app.country || '—'}</p>
@@ -201,16 +228,16 @@ export default function AdminScholarshipDetail() {
                         {app.course && <p className="text-xs text-white/40 mt-0.5">{app.course}</p>}
                       </td>
                       <td className="px-5 py-4 hidden lg:table-cell text-white/60">
-                        {app.documentsCount || 0} uploaded
+                        {app.documentsCount || app.submittedDocFields?.length || 0} uploaded
                       </td>
                       <td className="px-5 py-4 text-white/60 whitespace-nowrap">
                         {new Date(app.createdAt).toLocaleDateString(undefined, {
                           year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
                         })}
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4" onClick={(e) => e.stopPropagation()}>
                         <select
-                          value={app.status}
+                          value={app.status || 'pending'}
                           onChange={(e) => handleStatusChange(app._id, e.target.value)}
                           className={`text-xs font-semibold rounded-full px-2.5 py-1.5 border bg-transparent cursor-pointer focus:outline-none ${statusMeta.cls}`}
                         >
@@ -218,6 +245,15 @@ export default function AdminScholarshipDetail() {
                             <option key={s.value} value={s.value} className="bg-[#0A0F1A] text-white">{s.label}</option>
                           ))}
                         </select>
+                      </td>
+                      <td className="px-5 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => openApplication(app)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2FA084]/15 text-[#2FA084] text-xs font-semibold hover:bg-[#2FA084]/25 transition"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> View
+                        </button>
                       </td>
                     </motion.tr>
                   );
