@@ -384,10 +384,12 @@ h6 {
 }
 
 /* ─────────────── CONTAINER WIDTH OVERRIDES ─────────────── */
-/* Set left and right margins to exactly 50px on desktop viewports (>= 1024px) */
+/* Set left and right margins to exactly 30px on desktop viewports (>= 1024px) */
 @media (min-width: 1024px) {
   .max-w-7xl {
-    max-width: calc(100vw - 100px) !important;
+    max-width: calc(100vw - 60px) !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
   }
 }
 

@@ -218,7 +218,7 @@ export default function AdminLayout() {
         </header>
 
         {/* Page content */}
-        <main className="relative flex-1 overflow-auto p-4 sm:p-5 lg:p-8 w-full">
+        <main className="relative flex-1 overflow-auto p-4 sm:p-5 lg:px-[30px] lg:py-8 w-full">
           <Suspense
             fallback={
               <div className="flex items-center justify-center py-24 text-white/40">
