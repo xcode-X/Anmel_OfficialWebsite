@@ -384,20 +384,11 @@ h6 {
 }
 
 /* ─────────────── CONTAINER WIDTH OVERRIDES ─────────────── */
-/* Reduces excessive left/right margins on wide screens, keeping the site spacious yet integrated. */
-@media (min-width: 1280px) {
+/* Set left and right margins to exactly 50px on desktop viewports (>= 1024px) */
+@media (min-width: 1024px) {
   .max-w-7xl {
-    max-width: 90rem !important; /* Widen container to 1440px */
+    max-width: calc(100vw - 100px) !important;
   }
 }
-@media (min-width: 1536px) {
-  .max-w-7xl {
-    max-width: 96rem !important; /* Widen container to 1536px */
-  }
-}
-@media (min-width: 1728px) {
-  .max-w-7xl {
-    max-width: 104rem !important; /* Widen container to 1664px for ultra-wide monitors */
-  }
-}
+
 
