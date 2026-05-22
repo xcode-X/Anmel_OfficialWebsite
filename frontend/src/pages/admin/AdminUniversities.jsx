@@ -79,13 +79,14 @@ function UniversityFormPanel({ onClose, onSaved, university = null }) {
   const programMenuRef = useRef(null);
 
   const courses = useMemo(
-    () => programCatalog.filter((c) => selectedProgramKeys.has(courseKey(c))),
+    () => (Array.isArray(programCatalog) ? programCatalog : []).filter((c) => selectedProgramKeys.has(courseKey(c))),
     [programCatalog, selectedProgramKeys],
   );
 
   const filteredPrograms = useMemo(() => {
-    if (!selectedDegreeLevels.length) return programCatalog;
-    return programCatalog.filter((c) => selectedDegreeLevels.includes(c.level));
+    const catalog = Array.isArray(programCatalog) ? programCatalog : [];
+    if (!selectedDegreeLevels.length) return catalog;
+    return catalog.filter((c) => selectedDegreeLevels.includes(c.level));
   }, [programCatalog, selectedDegreeLevels]);
 
   const applyCatalog = useCallback((rows, { selectAll = true } = {}) => {

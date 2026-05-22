@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, ClipboardPaste, FileJson, Wand2 } from 'lucide-react';
 import { lmsContent } from '../../lib/api';
 const emptyForm = {
@@ -224,15 +224,16 @@ export default function AdminLmsContent() {
   }, []);
 
   const summary = useMemo(() => {
-    const published = items.filter((i) => i.published).length;
-    const scheduled = items.filter((i) => !i.published && i.scheduledPublishAt).length;
-    const drafts = items.filter((i) => !i.published && !i.scheduledPublishAt).length;
-    const videos = items.filter((i) => i.contentType === 'video').length;
+    const arr = Array.isArray(items) ? items : [];
+    const published = arr.filter((i) => i.published).length;
+    const scheduled = arr.filter((i) => !i.published && i.scheduledPublishAt).length;
+    const drafts = arr.filter((i) => !i.published && !i.scheduledPublishAt).length;
+    const videos = arr.filter((i) => i.contentType === 'video').length;
     return { published, scheduled, drafts, videos };
   }, [items]);
 
   const filteredItems = useMemo(() => {
-    return items.filter((item) => {
+    return (Array.isArray(items) ? items : []).filter((item) => {
       if (typeFilter !== 'all' && item.contentType !== typeFilter) return false;
       if (statusFilter === 'published' && !item.published) return false;
       if (statusFilter === 'scheduled' && (item.published || !item.scheduledPublishAt)) return false;

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, auth, studentRegistrations } from '../../lib/api';
 import { mergeApplicationWithFiles } from '../../lib/firestoreClient';
@@ -782,7 +782,7 @@ export default function AdminStudentIntake() {
     };
   }, [load]);
 
-  const internRows = useMemo(() => rows.filter(isInternApplication), [rows]);
+  const internRows = useMemo(() => (Array.isArray(rows) ? rows : []).filter(isInternApplication), [rows]);
 
   const counts = FILTER_TABS.reduce((acc, tab) => {
     acc[tab] = tab === 'all' ? internRows.length : internRows.filter((r) => r.status === tab).length;
