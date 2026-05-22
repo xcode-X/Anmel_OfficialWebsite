@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -170,7 +170,7 @@ export default function AdminLogin() {
             className="rounded-3xl border border-white/8 bg-white/[0.03] p-7 backdrop-blur-xl lg:p-9 flex flex-col"
           >
             <div className="mb-7">
-              <img src={logoAnmel} alt="Anmel Inc" className="h-9 w-auto object-contain" />
+              <img src={logoAnmel} alt="Anmel Inc" className="h-14 w-auto object-contain" />
             </div>
 
             <div className="inline-flex items-center gap-2 rounded-full border border-[#2FA084]/30 bg-[#2FA084]/8 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-[#2FA084] mb-5 w-fit">

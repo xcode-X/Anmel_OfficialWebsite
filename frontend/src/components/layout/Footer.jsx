@@ -46,7 +46,7 @@ export default function Footer() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-10 gap-10 lg:gap-8">
             <div className="sm:col-span-2 lg:col-span-4">
               <Link to="/" className="inline-flex items-center gap-2 mb-5">
-                <img src={logoAnmel} alt="Anmel Inc" className="h-10 w-auto object-contain" />
+                <img src={logoAnmel} alt="Anmel Inc" className="h-14 sm:h-16 w-auto object-contain" />
               </Link>
               <p className="text-stone-400 text-sm max-w-sm leading-relaxed">
                 Protecting your digital assets with cutting-edge cybersecurity solutions and secure web engineering—from Monrovia,

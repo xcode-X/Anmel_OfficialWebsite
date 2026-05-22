@@ -1,4 +1,4 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 
 /* Anmel Inc — Brand System
    Primary:   #5D1C6A  (brand purple)
@@ -382,3 +382,22 @@ h6 {
   animation: shimmer 1.4s ease-in-out infinite;
   border-radius: 6px;
 }
+
+/* ─────────────── CONTAINER WIDTH OVERRIDES ─────────────── */
+/* Reduces excessive left/right margins on wide screens, keeping the site spacious yet integrated. */
+@media (min-width: 1280px) {
+  .max-w-7xl {
+    max-width: 90rem !important; /* Widen container to 1440px */
+  }
+}
+@media (min-width: 1536px) {
+  .max-w-7xl {
+    max-width: 96rem !important; /* Widen container to 1536px */
+  }
+}
+@media (min-width: 1728px) {
+  .max-w-7xl {
+    max-width: 104rem !important; /* Widen container to 1664px for ultra-wide monitors */
+  }
+}
+

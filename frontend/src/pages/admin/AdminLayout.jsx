@@ -1,4 +1,4 @@
-﻿import { Suspense, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -81,7 +81,7 @@ export default function AdminLayout() {
         <div className="h-14 flex items-center justify-between px-3 border-b border-white/6 shrink-0">
           {sidebarOpen && (
             <Link to={ADMIN_BASE} className="flex items-center gap-2.5 min-w-0">
-              <img src={logoAnmel} alt="Anmel Inc" className="h-7 w-auto object-contain shrink-0" />
+              <img src={logoAnmel} alt="Anmel Inc" className="h-10 w-auto object-contain shrink-0" />
               <span
                 className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/35 whitespace-nowrap"
               >

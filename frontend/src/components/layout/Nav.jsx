@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, ChevronDown, ChevronRight, ArrowRight, Sparkles, GraduationCap } from 'lucide-react';
@@ -84,7 +84,7 @@ export default function Nav() {
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 shrink-0">
-            <img src={logoAnmel} alt="Anmel Inc" className={`h-9 w-auto object-contain`} />
+            <img src={logoAnmel} alt="Anmel Inc" className={`h-12 sm:h-14 md:h-16 w-auto object-contain transition-all`} />
           </Link>
 
           <nav className="hidden xl:flex items-center gap-5 overflow-visible">
@@ -445,7 +445,7 @@ export default function Nav() {
               className="absolute right-0 top-0 bottom-0 w-[280px] bg-white shadow-2xl border-l border-stone-200 p-8 flex flex-col gap-6"
             >
               <div className="flex justify-between items-center">
-                <img src={logoAnmel} alt="Anmel Inc" className="h-7 w-auto object-contain rounded-md" />
+                <img src={logoAnmel} alt="Anmel Inc" className="h-10 w-auto object-contain rounded-md" />
                 <button type="button" onClick={() => setMobileOpen(false)} className="p-2 text-stone-600 hover:text-stone-900" aria-label="Close menu">
                   <X className="w-5 h-5" strokeWidth={1.8} />
                 </button>
