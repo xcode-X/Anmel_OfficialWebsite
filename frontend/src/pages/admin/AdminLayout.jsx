@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { Suspense, useState } from 'react';
 import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -13,11 +13,11 @@ import {
   UserCheck,
   Building2,
   MessageSquareQuote,
+  Award,
   Home,
   ChevronLeft,
   ChevronRight,
   LogOut,
-  ShieldCheck,
   ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../../context/AppContext';
@@ -28,19 +28,18 @@ const nav = [
   { to: ADMIN_BASE, label: 'Overview',          end: true, icon: LayoutDashboard },
   { to: `${ADMIN_BASE}/blog`,        label: 'Blog',           icon: BookOpen },
   { to: `${ADMIN_BASE}/case-studies`,label: 'Case Studies',   icon: Briefcase },
-  { to: `${ADMIN_BASE}/services`,    label: 'Services',       icon: ShieldCheck },
   { to: `${ADMIN_BASE}/lms`,         label: 'LMS Content',    icon: GraduationCap },
-  { to: `${ADMIN_BASE}/students`,    label: 'Student Intake', icon: UserCheck },
+  { to: `${ADMIN_BASE}/students`,    label: 'Scholarship application', icon: Award },
+  { to: `${ADMIN_BASE}/intern-applications`, label: 'Intern application', icon: UserCheck },
   { to: `${ADMIN_BASE}/contacts`,    label: 'Contacts',       icon: Mail },
   { to: `${ADMIN_BASE}/pentest-results`, label: 'Pen Testing', icon: Terminal },
   { to: `${ADMIN_BASE}/users`,       label: 'Users',          icon: Users },
   { to: `${ADMIN_BASE}/agents`,      label: 'Agents',         icon: MonitorCheck },
   { to: `${ADMIN_BASE}/universities`,label: 'Universities',   icon: Building2 },
+  { to: `${ADMIN_BASE}/scholarships`, label: 'Scholarships',   icon: Award },
   { to: `${ADMIN_BASE}/testimonials`,label: 'Testimonials',   icon: MessageSquareQuote },
   { to: `${ADMIN_BASE}/settings`,    label: 'Settings',       icon: Settings },
 ];
-
-const ACCENT = '#2FA084'; // brand teal
 
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -61,7 +60,7 @@ export default function AdminLayout() {
 
       {/* â”€â”€ SIDEBAR â”€â”€ */}
       <aside
-        className={`${sidebarOpen ? 'w-60' : 'w-[60px]'} bg-[#0A0F1A] border-r border-white/6 flex flex-col transition-all duration-300 shrink-0 relative`}
+        className={`${sidebarOpen ? 'w-60' : 'w-[60px]'} bg-[#0A0F1A] border-r border-white/6 flex flex-col transition-all duration-300 shrink-0 relative z-30`}
       >
         {/* Logo bar */}
         <div className="h-14 flex items-center justify-between px-3 border-b border-white/6 shrink-0">
@@ -124,22 +123,18 @@ export default function AdminLayout() {
                 className={({ isActive }) =>
                   `group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150
                   ${isActive
-                    ? 'bg-[#2FA084]/15 text-[#2FA084] font-semibold border border-[#2FA084]/20'
+                    ? 'active bg-[#2FA084]/15 text-[#2FA084] font-semibold border border-[#2FA084]/20'
                     : 'text-white/45 hover:bg-white/5 hover:text-white/85 border border-transparent'
                   }
                   ${sidebarOpen ? '' : 'justify-center'}`
                 }
               >
-                {({ isActive }) => (
-                  <>
-                    <Icon
-                      className={`shrink-0 transition-colors ${sidebarOpen ? 'w-4 h-4' : 'w-[18px] h-[18px]'} ${isActive ? 'text-[#2FA084]' : 'text-white/40 group-hover:text-white/70'}`}
-                      strokeWidth={isActive ? 2.2 : 1.8}
-                    />
-                    {sidebarOpen && (
-                      <span className="truncate">{item.label}</span>
-                    )}
-                  </>
+                <Icon
+                  className={`shrink-0 transition-colors ${sidebarOpen ? 'w-4 h-4' : 'w-[18px] h-[18px]'} text-white/40 group-hover:text-white/70 group-[.active]:text-[#2FA084]`}
+                  strokeWidth={1.8}
+                />
+                {sidebarOpen && (
+                  <span className="truncate">{item.label}</span>
                 )}
               </NavLink>
             );
@@ -197,8 +192,16 @@ export default function AdminLayout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto p-5 lg:p-8">
-          <Outlet />
+        <main className="relative flex-1 overflow-auto p-5 lg:p-8">
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center py-24 text-white/40">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#2FA084]/30 border-t-[#2FA084]" />
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

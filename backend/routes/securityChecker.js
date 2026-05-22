@@ -3,11 +3,16 @@ import { body, validationResult } from 'express-validator';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { authMiddleware, adminOnly } from '../middleware/auth.js';
-import { isDbConnected } from '../lib/dbReady.js';
+import { isDbConnected, withDbQuery } from '../lib/dbReady.js';
 import SecurityScanRecord from '../models/SecurityScanRecord.js';
 import { runInteleraAiPentestSync, streamInteleraAiPentestSync } from '../lib/pentestPlatform.js';
+import { scanQueue } from '../lib/scanQueue.js';
 
 const router = Router();
+
+router.get('/queue-status', (_req, res) => {
+  res.json(scanQueue.getStatus());
+});
 const execFileAsync = promisify(execFile);
 
 function normalizeTargetUrl(input) {
@@ -672,6 +677,7 @@ router.post('/analyze',
   body('scanDepth').optional().isIn(['standard', 'in-depth']),
   body('scanMode').optional().isIn(['passive', 'active', 'both']),
   async (req, res) => {
+    await scanQueue.acquire();
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -1066,11 +1072,13 @@ router.post('/analyze',
     } catch (err) {
       console.error('[security-checker] /analyze failed:', err?.stack || err);
       if (!res.headersSent) {
-        res.status(500).json({
+        res.status(503).json({
           error: 'Security scan failed. Please try again.',
           detail: process.env.NODE_ENV !== 'production' ? err?.message : undefined,
         });
       }
+    } finally {
+      scanQueue.release();
     }
   }
 );
@@ -1086,6 +1094,7 @@ router.post(
   body('scanDepth').optional().isIn(['standard', 'in-depth']),
   body('scanMode').optional().isIn(['passive', 'active', 'both']),
   async (req, res) => {
+    await scanQueue.acquire();
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -1192,7 +1201,7 @@ router.post(
     } catch (err) {
       console.error('[security-checker] /analyze-stream failed:', err?.stack || err);
       if (!res.headersSent) {
-        res.status(500).json({
+        res.status(503).json({
           error: 'Security scan failed. Please try again.',
           detail: process.env.NODE_ENV !== 'production' ? err?.message : undefined,
         });
@@ -1200,6 +1209,8 @@ router.post(
         writeNdjson(res, { channel: 'error', type: 'fatal', message: err?.message || String(err) });
         res.end();
       }
+    } finally {
+      scanQueue.release();
     }
   },
 );
@@ -1207,14 +1218,19 @@ router.post(
 router.get('/records', authMiddleware, adminOnly, async (req, res) => {
   if (!isDbConnected()) return res.json([]);
   try {
-    const rows = await SecurityScanRecord.find()
-      .sort({ completedAt: -1 })
-      .limit(500)
-      .select('-result')
-      .lean();
+    const rows = await withDbQuery(
+      () =>
+        SecurityScanRecord.find()
+          .sort({ completedAt: -1 })
+          .limit(200)
+          .select('-result -rawHtml -screenshot')
+          .maxTimeMS(8000)
+          .lean(),
+      { fallback: [], label: 'security-scan records', timeoutMs: 10000 },
+    );
     res.json(rows);
   } catch (e) {
-    res.status(500).json({ error: 'Failed to load records' });
+    res.status(503).json({ error: 'Failed to load records' });
   }
 });
 

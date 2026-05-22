@@ -1,17 +1,70 @@
-﻿import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Plus, Trash2, Building2, BookOpen, MapPin, X,
+  Plus, Trash2, Pencil, Building2, BookOpen, MapPin, X,
   GraduationCap, Users, Award, ChevronDown, ChevronUp, Image as ImageIcon,
-  Globe, Loader2, ExternalLink, CheckCircle2, AlertCircle, Link2,
+  Globe, Loader2, ExternalLink, CheckCircle2, AlertCircle, Link2, ArrowLeft,
 } from 'lucide-react';
 import { universitiesApi } from '../../lib/api';
+import { subscribeContentStream } from '../../lib/contentStream';
+import LazyUniversityImage from '../../components/education/LazyUniversityImage';
 
 
-// ─── Form panel ───────────────────────────────────────────────────────────────
-function UniversityFormPanel({ onClose, onSaved }) {
+const DEFAULT_UNI_IMAGE =
+  'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=1200&q=80';
+
+const DEGREE_LEVELS = ['Undergraduate', "Master's", 'PhD', 'Diploma', 'Certificate', 'Foundation'];
+
+const LEVEL_SHORT = {
+  Undergraduate: 'UG',
+  "Master's": 'PG',
+  PhD: 'PhD',
+  Diploma: 'Diploma',
+  Certificate: 'Cert',
+  Foundation: 'Found.',
+};
+
+function normalizeWebsiteUrl(input) {
+  const raw = String(input || '').trim();
+  const match = raw.match(/https?:\/\/[^\s"'<>]+/i);
+  if (match) return match[0];
+  return raw;
+}
+
+function levelDotClass(level) {
+  if (level === 'PhD') return 'bg-purple-400';
+  if (level === "Master's") return 'bg-blue-400';
+  if (level === 'Diploma') return 'bg-amber-400';
+  if (level === 'Certificate') return 'bg-rose-400';
+  if (level === 'Foundation') return 'bg-orange-400';
+  return 'bg-[#2FA084]';
+}
+
+function courseKey(c) {
+  return `${String(c.name || '').trim().toLowerCase()}|${c.level || 'Undergraduate'}`;
+}
+
+function mergeCatalog(existing, incoming) {
+  const map = new Map();
+  for (const c of [...existing, ...incoming]) {
+    if (!c?.name?.trim()) continue;
+    const row = {
+      name: c.name.trim(),
+      level: c.level || 'Undergraduate',
+      duration: c.duration || '',
+    };
+    map.set(courseKey(row), row);
+  }
+  return [...map.values()];
+}
+
+// ─── Form panel (create + edit) ───────────────────────────────────────────────
+function UniversityFormPanel({ onClose, onSaved, university = null }) {
+  const isEdit = Boolean(university?._id);
   const [form, setForm] = useState({ name: '', country: '', description: '', ranking: '', founded: '', students: '', website: '' });
-  const [courses, setCourses]     = useState([]);
+  const [programCatalog, setProgramCatalog] = useState([]);
+  const [selectedDegreeLevels, setSelectedDegreeLevels] = useState([]);
+  const [selectedProgramKeys, setSelectedProgramKeys] = useState(() => new Set());
   const [imageFile, setImageFile] = useState('');
   const [imagePreview, setImagePreview] = useState('');
   const [saving, setSaving]       = useState(false);
@@ -20,15 +73,68 @@ function UniversityFormPanel({ onClose, onSaved }) {
   const [lookupDone, setLookupDone] = useState(false);
   const [lookupError, setLookupError] = useState('');
   const [newCourse, setNewCourse] = useState('');
+  const [programMenuOpen, setProgramMenuOpen] = useState(false);
   const lookedUpUrl = useRef('');
+  const lookupDebounceRef = useRef(null);
+  const programMenuRef = useRef(null);
+
+  const courses = useMemo(
+    () => programCatalog.filter((c) => selectedProgramKeys.has(courseKey(c))),
+    [programCatalog, selectedProgramKeys],
+  );
+
+  const filteredPrograms = useMemo(() => {
+    if (!selectedDegreeLevels.length) return programCatalog;
+    return programCatalog.filter((c) => selectedDegreeLevels.includes(c.level));
+  }, [programCatalog, selectedDegreeLevels]);
+
+  const applyCatalog = useCallback((rows, { selectAll = true } = {}) => {
+    const merged = mergeCatalog([], rows);
+    setProgramCatalog(merged);
+    const levels = [...new Set(merged.map((c) => c.level).filter(Boolean))];
+    setSelectedDegreeLevels(levels.length ? levels : []);
+    setSelectedProgramKeys((prev) => {
+      if (!selectAll) return prev;
+      return new Set(merged.map((c) => courseKey(c)));
+    });
+  }, []);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    if (!university) {
+      setForm({ name: '', country: '', description: '', ranking: '', founded: '', students: '', website: '' });
+      setProgramCatalog([]);
+      setSelectedDegreeLevels([]);
+      setSelectedProgramKeys(new Set());
+      setImagePreview('');
+      setImageFile('');
+      return;
+    }
+    setForm({
+      name: university.name || '',
+      country: university.country || '',
+      description: university.description || '',
+      ranking: university.ranking || '',
+      founded: university.founded || '',
+      students: university.students || '',
+      website: university.website || '',
+    });
+    const existing = Array.isArray(university.courses) ? university.courses.map((c) => ({ ...c })) : [];
+    applyCatalog(existing, { selectAll: true });
+    setImagePreview(university.image || '');
+    setImageFile('');
+    setLookupDone(false);
+    setLookupError('');
+    lookedUpUrl.current = university.website || '';
+  }, [university, applyCatalog]);
 
   // ── URL lookup (via backend proxy — no direct Hipolabs/Wikipedia from browser) ─
   const lookupUrl = async (url) => {
     if (!url) return;
-    const trimmed = url.trim();
+    const trimmed = normalizeWebsiteUrl(url);
     try { new URL(trimmed); } catch { return; }
+    set('website', trimmed);
     lookedUpUrl.current = trimmed;
     setLookingUp(true);
     setLookupDone(false);
@@ -45,45 +151,145 @@ function UniversityFormPanel({ onClose, onSaved }) {
         founded:     data.founded     || f.founded,
         students:    data.students    || f.students,
       }));
-      if (data.courses?.length > 0) setCourses(data.courses);
+      if (data.courses?.length > 0) {
+        applyCatalog(
+          data.courses.map((c) => ({
+            name: c.name,
+            level: c.level || 'Undergraduate',
+            duration: c.duration || '',
+          })),
+          { selectAll: true },
+        );
+      }
+      if (data.image && /^https?:\/\//i.test(data.image)) {
+        setImagePreview(data.image);
+        setImageFile(data.image);
+      }
       setLookupDone(true);
+      if (data.lookupWarning) {
+        setLookupError(data.lookupWarning);
+      } else {
+        setLookupError('');
+      }
     } catch {
-      setLookupError('Could not fetch details. Fill in manually or click Lookup to try again.');
+      setLookupError('Could not fetch from the official website. Fill in manually or click Lookup to retry.');
     } finally {
       setLookingUp(false);
     }
   };
 
+  const scheduleLookup = (url) => {
+    clearTimeout(lookupDebounceRef.current);
+    if (!url?.trim().startsWith('http')) return;
+    lookupDebounceRef.current = setTimeout(() => lookupUrl(url.trim()), 800);
+  };
+
   const handleUrlChange = (e) => {
-    set('website', e.target.value);
+    const v = normalizeWebsiteUrl(e.target.value);
+    set('website', v);
     setLookupDone(false);
+    setLookupError('');
     lookedUpUrl.current = '';
+    scheduleLookup(v);
   };
 
   const handleUrlPaste = (e) => {
-    const pasted = (e.clipboardData?.getData('text') || '').trim();
-    if (pasted.startsWith('http')) {
-      // update the input value first, then auto-trigger lookup
-      set('website', pasted);
-      setLookupDone(false);
-      setTimeout(() => lookupUrl(pasted), 100);
-    }
+    const pasted = normalizeWebsiteUrl(e.clipboardData?.getData('text') || '');
+    if (!pasted.startsWith('http')) return;
+    e.preventDefault();
+    set('website', pasted);
+    setLookupDone(false);
+    setLookupError('');
+    setTimeout(() => lookupUrl(pasted), 150);
   };
+
+  useEffect(() => () => clearTimeout(lookupDebounceRef.current), []);
+
+  useEffect(() => {
+    if (!programMenuOpen) return undefined;
+    const onDown = (e) => {
+      if (programMenuRef.current && !programMenuRef.current.contains(e.target)) {
+        setProgramMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [programMenuOpen]);
+
+  const toggleDegreeLevel = (lvl) => {
+    setSelectedDegreeLevels((prev) =>
+      prev.includes(lvl) ? prev.filter((l) => l !== lvl) : [...prev, lvl],
+    );
+  };
+
+  const toggleProgram = (c) => {
+    const key = courseKey(c);
+    setSelectedProgramKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const selectAllFilteredPrograms = () => {
+    setSelectedProgramKeys((prev) => {
+      const next = new Set(prev);
+      filteredPrograms.forEach((c) => next.add(courseKey(c)));
+      return next;
+    });
+  };
+
+  const clearAllPrograms = () => setSelectedProgramKeys(new Set());
 
   // ── Image ───────────────────────────────────────────────────────────────────
   const handleImage = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onloadend = () => { setImageFile(reader.result); setImagePreview(reader.result); };
+    reader.onloadend = () => {
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 1200;
+        const scale = Math.min(1, maxW / (img.width || maxW));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round((img.width || maxW) * scale);
+        canvas.height = Math.round((img.height || maxW) * scale);
+        const ctx = canvas.getContext('2d');
+        if (ctx) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL('image/jpeg', 0.82);
+        setImageFile(compressed);
+        setImagePreview(compressed);
+      };
+      img.src = reader.result;
+    };
     reader.readAsDataURL(file);
   };
 
   // ── Course management ───────────────────────────────────────────────────────
-  const removeCourse = (i) => setCourses(c => c.filter((_, idx) => idx !== i));
+  const removeCourse = (c) => {
+    const key = courseKey(c);
+    setSelectedProgramKeys((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
   const addCustomCourse = () => {
     if (!newCourse.trim()) return;
-    setCourses(c => [...c, { name: newCourse.trim(), level: 'Undergraduate', duration: '' }]);
+    const levels = selectedDegreeLevels.length ? selectedDegreeLevels : ['Undergraduate'];
+    const added = levels.map((level) => ({
+      name: newCourse.trim(),
+      level,
+      duration: '',
+    }));
+    setProgramCatalog((prev) => mergeCatalog(prev, added));
+    setSelectedProgramKeys((prev) => {
+      const next = new Set(prev);
+      added.forEach((c) => next.add(courseKey(c)));
+      return next;
+    });
     setNewCourse('');
   };
 
@@ -95,41 +301,58 @@ function UniversityFormPanel({ onClose, onSaved }) {
     if (!form.country.trim()) { setError('Country is required.'); return; }
     setSaving(true);
     try {
-      const created = await universitiesApi.create({
+      const payload = {
         ...form,
-        courses: courses.filter(c => c.name.trim()),
-        image: imageFile || 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=1200&q=80',
-      });
-      onSaved(created);
+        courses: courses.filter((c) => c.name.trim()),
+        image: imageFile || university?.image || DEFAULT_UNI_IMAGE,
+      };
+      const saved = isEdit
+        ? await universitiesApi.update(university._id, payload)
+        : await universitiesApi.create(payload);
+      onSaved(saved);
       onClose();
     } catch (err) {
-      setError(err.message || 'Failed to save university.');
+      setError(err.message || `Failed to ${isEdit ? 'update' : 'save'} university.`);
     } finally { setSaving(false); }
   };
 
   const inputCls = 'w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#2FA084]/50';
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-start justify-end bg-black/60 backdrop-blur-sm"
-      onClick={onClose}>
-      <motion.aside initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="h-full w-full max-w-xl bg-[#0A0F1A] border-l border-white/8 overflow-y-auto flex flex-col"
-        onClick={e => e.stopPropagation()}>
+    <motion.div
+      initial={{ opacity: 0, x: 16 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.25 }}
+      className="max-w-3xl mx-auto text-white"
+    >
+      <div className="mb-8">
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex items-center gap-2 text-sm font-semibold text-white/50 hover:text-[#2FA084] transition-colors mb-5 group"
+        >
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 group-hover:border-[#2FA084]/30 group-hover:bg-[#2FA084]/10 transition">
+            <ArrowLeft className="w-4 h-4" strokeWidth={2.2} />
+          </span>
+          Back to universities
+        </button>
 
-        {/* Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-[#0A0F1A] border-b border-white/8">
-          <div>
-            <h2 className="text-lg font-bold text-white" style={{ fontFamily: 'var(--font-display)' }}>Add Partner University</h2>
-            <p className="text-xs text-white/40 mt-0.5">Paste the university website URL — details &amp; courses auto-fill instantly</p>
+        <div className="flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#2FA084]/15 border border-[#2FA084]/25">
+            <Building2 className="w-6 h-6 text-[#2FA084]" strokeWidth={1.75} />
           </div>
-          <button type="button" onClick={onClose} className="p-2 text-white/40 hover:text-white/80 rounded-lg hover:bg-white/5 transition">
-            <X className="w-5 h-5" />
-          </button>
+          <div>
+            <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
+              {isEdit ? 'Edit Partner University' : 'Add Partner University'}
+            </h1>
+            <p className="text-sm text-white/40 mt-1">
+              Paste the official website URL — name, stats, and programmes load automatically.
+            </p>
+          </div>
         </div>
+      </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="rounded-2xl border border-white/8 bg-white/[0.02] p-6 sm:p-8 space-y-6">
           {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">{error}</p>}
 
           {/* ── URL field (primary trigger) ── */}
@@ -165,13 +388,13 @@ function UniversityFormPanel({ onClose, onSaved }) {
             {lookingUp && (
               <p className="mt-2 text-xs text-[#2FA084]/70 flex items-center gap-1.5">
                 <Loader2 className="w-3 h-3 animate-spin" />
-                Looking up university name, details &amp; programmes…
+                Fetching from the official university website (programmes, founded year, students)…
               </p>
             )}
-            {lookupDone && !lookingUp && (
+            {lookupDone && !lookingUp && !lookupError && (
               <p className="mt-2 text-xs text-emerald-400 flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                Details auto-filled from web — review and edit the fields below before saving.
+                Loaded from the university website — review fields and programmes below, then save.
               </p>
             )}
             {lookupError && !lookingUp && (
@@ -242,29 +465,168 @@ function UniversityFormPanel({ onClose, onSaved }) {
             </div>
           </div>
 
-          {/* ── Courses — auto-fetched from URL, shown as removable chips ── */}
+          {/* ── Degree levels (multi-select) ── */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-3">
-              Programmes &amp; Degrees
-              {courses.length > 0 && <span className="ml-2 text-[#2FA084] normal-case font-normal">({courses.length} detected)</span>}
-            </p>
+            <label className="block text-xs font-bold uppercase tracking-wider text-white/40 mb-2">
+              Degree levels offered
+            </label>
+            <p className="text-[11px] text-white/30 mb-2">Select one or more levels — the programme list updates instantly.</p>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {DEGREE_LEVELS.map((lvl) => {
+                const on = selectedDegreeLevels.includes(lvl);
+                return (
+                  <button
+                    key={lvl}
+                    type="button"
+                    onClick={() => toggleDegreeLevel(lvl)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold border transition ${
+                      on
+                        ? 'bg-[#2FA084]/20 border-[#2FA084] text-[#3CD1AD]'
+                        : 'bg-white/5 border-white/10 text-white/50 hover:border-white/25'
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${levelDotClass(lvl)}`} />
+                    {LEVEL_SHORT[lvl]} — {lvl}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setSelectedDegreeLevels([...DEGREE_LEVELS])}
+                className="text-[#2FA084] hover:underline font-semibold"
+              >
+                Select all levels
+              </button>
+              <span className="text-white/20">|</span>
+              <button
+                type="button"
+                onClick={() => setSelectedDegreeLevels([])}
+                className="text-white/40 hover:text-white/70"
+              >
+                Clear levels
+              </button>
+            </div>
+          </div>
 
-            {courses.length === 0 && !lookingUp && (
+          {/* ── Programmes (multi-select dropdown) ── */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-white/40 mb-2">
+              Programmes
+              {courses.length > 0 && (
+                <span className="ml-2 text-[#2FA084] normal-case font-normal">
+                  ({courses.length} selected{programCatalog.length ? ` / ${programCatalog.length} available` : ''})
+                </span>
+              )}
+            </label>
+
+            {programCatalog.length === 0 && !lookingUp && (
               <p className="text-xs text-white/30 italic mb-3">
-                Paste the university URL above and programmes will appear here automatically.
+                Paste the university URL above — programmes appear in the dropdown automatically.
               </p>
             )}
+
+            <div ref={programMenuRef} className="relative mb-3">
+              <button
+                type="button"
+                onClick={() => setProgramMenuOpen((o) => !o)}
+                disabled={lookingUp || programCatalog.length === 0}
+                className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white text-sm hover:border-[#2FA084]/50 disabled:opacity-40 transition"
+              >
+                <span className="truncate text-left">
+                  {lookingUp
+                    ? 'Loading programmes…'
+                    : programCatalog.length === 0
+                      ? 'No programmes yet — run URL lookup'
+                      : `${selectedProgramKeys.size} programme(s) selected`}
+                </span>
+                <ChevronDown className={`w-4 h-4 shrink-0 transition ${programMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              <AnimatePresence>
+                {programMenuOpen && programCatalog.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="absolute z-30 left-0 right-0 mt-1 rounded-xl border border-white/10 bg-[#0d1320] shadow-2xl overflow-hidden"
+                  >
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-white/10 bg-white/3">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                        {filteredPrograms.length} shown
+                        {selectedDegreeLevels.length ? ` (${selectedDegreeLevels.length} level filter)` : ''}
+                      </span>
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={selectAllFilteredPrograms}
+                          className="text-[10px] font-bold text-[#2FA084] hover:underline"
+                        >
+                          Select all
+                        </button>
+                        <button
+                          type="button"
+                          onClick={clearAllPrograms}
+                          className="text-[10px] font-bold text-white/40 hover:text-white/70"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                    <ul className="max-h-56 overflow-y-auto py-1">
+                      {filteredPrograms.length === 0 ? (
+                        <li className="px-4 py-3 text-xs text-white/40">No programmes for the selected degree levels.</li>
+                      ) : (
+                        filteredPrograms.map((c) => {
+                          const key = courseKey(c);
+                          const checked = selectedProgramKeys.has(key);
+                          return (
+                            <li key={key}>
+                              <label className="flex items-start gap-3 px-4 py-2.5 hover:bg-white/5 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleProgram(c)}
+                                  className="mt-0.5 accent-[#2FA084]"
+                                />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block text-sm text-white/90 leading-snug">{c.name}</span>
+                                  <span className="text-[10px] font-bold uppercase text-white/35">
+                                    {LEVEL_SHORT[c.level] || c.level}
+                                    {c.duration ? ` · ${c.duration}` : ''}
+                                  </span>
+                                </span>
+                              </label>
+                            </li>
+                          );
+                        })
+                      )}
+                    </ul>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {courses.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-3">
                 <AnimatePresence>
-                  {courses.map((c, i) => (
-                    <motion.span key={c.name} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs text-white/70">
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${c.level === 'PhD' ? 'bg-purple-400' : c.level === "Master's" ? 'bg-blue-400' : 'bg-[#2FA084]'}`} />
+                  {courses.map((c) => (
+                    <motion.span
+                      key={courseKey(c)}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs text-white/70"
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${levelDotClass(c.level)}`} />
+                      <span className="text-[10px] font-bold uppercase text-white/35">{LEVEL_SHORT[c.level] || c.level}</span>
                       {c.name}
-                      <button type="button" onClick={() => removeCourse(i)}
-                        className="ml-0.5 text-white/30 hover:text-red-400 transition rounded-full">
+                      <button
+                        type="button"
+                        onClick={() => removeCourse(c)}
+                        className="ml-0.5 text-white/30 hover:text-red-400 transition rounded-full"
+                      >
                         <X className="w-3 h-3" />
                       </button>
                     </motion.span>
@@ -273,34 +635,32 @@ function UniversityFormPanel({ onClose, onSaved }) {
               </div>
             )}
 
-            {/* Add custom programme */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <input
                 value={newCourse}
-                onChange={e => setNewCourse(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addCustomCourse())}
-                placeholder="Add a programme manually…"
-                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#2FA084]/50"
+                onChange={(e) => setNewCourse(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCustomCourse())}
+                placeholder="Add custom programme name…"
+                className="flex-1 min-w-[140px] px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#2FA084]/50"
               />
-              <button type="button" onClick={addCustomCourse}
-                className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-[#2FA084] text-sm hover:bg-[#2FA084]/10 transition flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={addCustomCourse}
+                disabled={!newCourse.trim()}
+                className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-[#2FA084] text-sm hover:bg-[#2FA084]/10 transition flex items-center gap-1.5 disabled:opacity-40"
+              >
                 <Plus className="w-3.5 h-3.5" /> Add
               </button>
             </div>
-
-            {courses.length > 0 && (
-              <div className="mt-2 flex gap-3 text-[10px] text-white/25">
-                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#2FA084]" />Undergraduate</span>
-                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-400" />Master's</span>
-                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-400" />PhD</span>
-              </div>
-            )}
+            <p className="mt-2 text-[10px] text-white/30">
+              Custom programmes are added for each selected degree level above.
+            </p>
           </div>
 
           <div className="flex gap-3 pt-4 border-t border-white/8">
             <button type="submit" disabled={saving}
               className="flex-1 py-3 rounded-xl bg-[#2FA084] text-white font-bold text-sm hover:bg-[#3CD1AD] transition disabled:opacity-50">
-              {saving ? 'Saving…' : 'Save University'}
+              {saving ? 'Saving…' : isEdit ? 'Update University' : 'Save University'}
             </button>
             <button type="button" onClick={onClose}
               className="px-6 py-3 rounded-xl border border-white/10 text-white/50 text-sm hover:bg-white/5 hover:text-white/80 transition">
@@ -308,7 +668,6 @@ function UniversityFormPanel({ onClose, onSaved }) {
             </button>
           </div>
         </form>
-      </motion.aside>
     </motion.div>
   );
 }
@@ -318,32 +677,31 @@ export default function AdminUniversities() {
   const [unis, setUnis] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingUni, setEditingUni] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [expandedCourses, setExpandedCourses] = useState({});
-  const pollRef = useRef(null);
 
   const retryRef = useRef(null);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
-      const data = await (quiet ? universitiesApi.list() : universitiesApi.listFull());
-
-      if (universitiesApi.isUnavailable(data)) {
-        // DB is reconnecting — schedule a quick retry for the initial load
-        if (!quiet) {
-          retryRef.current = setTimeout(() => load(false), 2000);
-        }
-        return; // keep loading spinner / existing data intact
-      }
-
+      const data = await universitiesApi.list();
       const incoming = Array.isArray(data) ? data : [];
       setUnis(prev => {
-        if (!quiet) return incoming;
-        // Background poll: merge metadata, preserve image blobs already in state
-        if (incoming.length === 0) return prev; // skip if poll returned empty (keep existing)
+        if (!quiet) {
+          return incoming.map(u => {
+            const existing = prev.find(p => String(p._id) === String(u._id));
+            return existing?.image && !u.image ? { ...u, image: existing.image, hasImage: true } : u;
+          });
+        }
+        if (incoming.length === 0) return prev;
         const byId = Object.fromEntries(prev.map(u => [String(u._id), u]));
-        return incoming.map(u => ({ ...(byId[String(u._id)] || {}), ...u }));
+        return incoming.map(u => {
+          const merged = { ...(byId[String(u._id)] || {}), ...u };
+          if (byId[String(u._id)]?.image && !u.image) merged.image = byId[String(u._id)].image;
+          return merged;
+        });
       });
     } catch { /* ignore */ }
     finally { if (!quiet) setLoading(false); }
@@ -351,12 +709,28 @@ export default function AdminUniversities() {
 
   useEffect(() => {
     load();
-    pollRef.current = setInterval(() => load(true), 30000);
-    return () => {
-      clearInterval(pollRef.current);
-      clearTimeout(retryRef.current);
+    const cleanups = [];
+    cleanups.push(
+      universitiesApi.subscribe((rows) => {
+        setUnis(rows);
+        setLoading(false);
+      }),
+    );
+    cleanups.push(
+      subscribeContentStream((resource) => {
+        if (resource === 'universities') load(true);
+      }),
+    );
+    const onVis = () => {
+      if (document.visibilityState === 'visible') load(true);
     };
-  }, []);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearTimeout(retryRef.current);
+      cleanups.forEach((fn) => fn());
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [load]);
 
   const handleDelete = async (id) => {
     try { await universitiesApi.delete(id); setConfirmDelete(null); setUnis(prev => prev.filter(u => u._id !== id)); }
@@ -365,15 +739,37 @@ export default function AdminUniversities() {
 
   const toggleCourses = (id) => setExpandedCourses(e => ({ ...e, [id]: !e[id] }));
 
-  if (loading) return (
+  if (loading && !showForm && !editingUni) return (
     <div className="flex items-center justify-center py-24 text-white/40">
       <Loader2 className="w-6 h-6 animate-spin mr-3" />
       Loading universities…
     </div>
   );
 
+  if (showForm || editingUni) {
+    return (
+      <UniversityFormPanel
+        university={editingUni}
+        onClose={() => { setShowForm(false); setEditingUni(null); }}
+        onSaved={(saved) => {
+          if (!saved?._id) return;
+          setUnis((prev) => {
+            const idx = prev.findIndex((u) => String(u._id) === String(saved._id));
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = { ...next[idx], ...saved };
+              return next;
+            }
+            return [saved, ...prev];
+          });
+          setShowForm(false);
+          setEditingUni(null);
+        }}
+      />
+    );
+  }
+
   return (
-    <>
       <div className="space-y-6 text-white">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -381,8 +777,11 @@ export default function AdminUniversities() {
             <p className="text-sm text-white/40 mt-1">{unis.length} institution{unis.length !== 1 ? 's' : ''} · updates appear live on the public site</p>
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#2FA084] text-white text-sm font-bold hover:bg-[#3CD1AD] transition shadow-lg shadow-[#2FA084]/20">
+            <button
+              type="button"
+              onClick={() => { setEditingUni(null); setShowForm(true); }}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#2FA084] text-white text-sm font-bold hover:bg-[#3CD1AD] transition shadow-lg shadow-[#2FA084]/20"
+            >
               <Plus className="w-4 h-4" />
               Add University
             </button>
@@ -422,10 +821,16 @@ export default function AdminUniversities() {
                     >
                       {/* Thumbnail */}
                       <td className="px-5 py-3.5">
-                        <div className="w-10 h-10 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex-shrink-0 flex items-center justify-center">
-                          {uni.image
-                            ? <img src={uni.image} alt="" className="w-full h-full object-cover" />
-                            : <Building2 className="w-5 h-5 text-white/20" />}
+                        <div className="w-10 h-10 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex-shrink-0">
+                          <LazyUniversityImage
+                            uniId={uni._id || uni.idName}
+                            alt=""
+                            imageUrl={uni.image}
+                            hasImage={uni.hasImage || Boolean(uni.image)}
+                            compact
+                            className="w-full h-full object-cover"
+                            wrapperClassName="w-full h-full flex items-center justify-center"
+                          />
                         </div>
                       </td>
 
@@ -497,7 +902,7 @@ export default function AdminUniversities() {
                         )}
                       </td>
 
-                      {/* Delete */}
+                      {/* Edit / Delete */}
                       <td className="px-5 py-3.5 text-right" onClick={e => e.stopPropagation()}>
                         {confirmDelete === uni._id ? (
                           <div className="flex items-center justify-end gap-1.5">
@@ -511,10 +916,20 @@ export default function AdminUniversities() {
                             </button>
                           </div>
                         ) : (
-                          <button type="button" onClick={() => setConfirmDelete(uni._id)}
-                            className="p-2 rounded-lg text-red-400/40 hover:text-red-400 hover:bg-red-500/10 transition">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              title="Edit university"
+                              onClick={() => { setEditingUni(uni); setShowForm(false); }}
+                              className="p-2 rounded-lg text-[#2FA084]/60 hover:text-[#2FA084] hover:bg-[#2FA084]/10 transition"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button type="button" onClick={() => setConfirmDelete(uni._id)}
+                              className="p-2 rounded-lg text-red-400/40 hover:text-red-400 hover:bg-red-500/10 transition">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         )}
                       </td>
                     </motion.tr>
@@ -525,10 +940,5 @@ export default function AdminUniversities() {
           </div>
         )}
       </div>
-
-      <AnimatePresence>
-        {showForm && <UniversityFormPanel onClose={() => setShowForm(false)} onSaved={(newUni) => { if (newUni) setUnis(prev => [newUni, ...prev]); }} />}
-      </AnimatePresence>
-    </>
   );
 }

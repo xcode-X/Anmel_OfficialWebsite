@@ -10,6 +10,8 @@ dist-ssr/
 .env
 .env.local
 .env.*.local
+firebase-service-account.json
+**/firebase-service-account.json
 
 # Logs
 logs
@@ -32,6 +34,13 @@ pnpm-debug.log*
 
 # Optional
 *.local
+
+# Firebase local cache
+.firebase/
+
+# User uploads (keep directory via .gitkeep)
+backend/uploads/**
+!backend/uploads/.gitkeep
 
 # Python pentest platform local DB / venv
 ai-pentest-platform/data/

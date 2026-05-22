@@ -1,28 +1,93 @@
 import { Router } from 'express';
 import { body, validationResult } from 'express-validator';
 import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
+import { getJwtSecret } from '../lib/jwtSecret.js';
+import { createAdminSseRoute } from '../lib/streamRoute.js';
+import { broadcastSse } from '../lib/sse.js';
 import StudentRegistration from '../models/StudentRegistration.js';
 import { authMiddleware, adminOnly } from '../middleware/auth.js';
 import { notifyStudentProvisioned } from '../lib/notifyStudent.js';
-import { isDbConnected } from '../lib/dbReady.js';
+import { isDbConnected, withDbQuery } from '../lib/dbReady.js';
+import { sendRouteError } from '../lib/asyncHandler.js';
+import { persistMediaFields, resolvePublicMediaUrl, isDataUrl } from '../lib/fileStorage.js';
+import { STUDENT_DOC_FIELDS } from '../lib/mediaFields.js';
+import { invalidateAdminStatsCache } from './adminStats.js';
+import { publishContentChange } from '../lib/contentStreamHub.js';
+import { logError } from '../lib/logger.js';
 
 const router = Router();
 const listeners = new Set();
 
-// Document field names — used to strip blobs from list responses and compute submittedDocFields
-const DOC_FIELDS = [
-  'passportPhoto', 'oLevelCertificate', 'aLevelCertificate', 'highSchoolDiploma',
-  'waecResult', 'academicTranscript', 'bachelorDegree', 'masterDegree',
-  'englishProficiency', 'healthCertificate', 'passportBioPage',
-  'recommendationLetters', 'personalStatement', 'cvResume', 'otherDocuments',
-];
+const DOC_FIELDS = STUDENT_DOC_FIELDS;
+
+function withResolvedDocUrls(req, row) {
+  if (!row) return row;
+  const out = { ...row };
+  for (const f of DOC_FIELDS) {
+    if (out[f]) out[f] = resolvePublicMediaUrl(req, out[f]);
+  }
+  return out;
+}
 
 function emitChanged() {
-  const payload = JSON.stringify({ event: 'changed', ts: Date.now() });
-  for (const client of listeners) {
-    client.write(`data: ${payload}\n\n`);
-  }
+  broadcastSse(listeners, { event: 'changed', ts: Date.now() });
+}
+
+/** Notify admin dashboards (SSE + stats cache). */
+export function broadcastStudentRegistrationChange() {
+  emitChanged();
+  invalidateAdminStatsCache();
+}
+
+function buildStudentPayload(body, storedDocs) {
+  return {
+    fullName:              body.fullName,
+    email:                 body.email,
+    phone:                 body.phone || '',
+    courseSlug:            body.courseSlug || 'general',
+    applicationType:       body.applicationType || (body.courseSlug && body.courseSlug !== 'general' ? 'intern' : 'university'),
+    country:               body.country || '',
+    educationLevel:        body.educationLevel || '',
+    experienceLevel:       body.experienceLevel || '',
+    preferredLearningMode: body.preferredLearningMode || '',
+    preferredStartWindow:  body.preferredStartWindow || '',
+    motivation:            body.motivation || '',
+    university:            body.university || '',
+    course:                body.course || '',
+    degreeLevel:           body.degreeLevel || '',
+    intake:                body.intake || '',
+    studyMode:             body.studyMode || '',
+    campus:                body.campus || '',
+    passportPhoto:         storedDocs.passportPhoto || '',
+    oLevelCertificate:     storedDocs.oLevelCertificate || '',
+    aLevelCertificate:     storedDocs.aLevelCertificate || '',
+    highSchoolDiploma:     storedDocs.highSchoolDiploma || '',
+    waecResult:            storedDocs.waecResult || '',
+    academicTranscript:    storedDocs.academicTranscript || '',
+    bachelorDegree:        storedDocs.bachelorDegree || '',
+    masterDegree:          storedDocs.masterDegree || '',
+    englishProficiency:    storedDocs.englishProficiency || '',
+    healthCertificate:     storedDocs.healthCertificate || '',
+    passportBioPage:       storedDocs.passportBioPage || '',
+    recommendationLetters: storedDocs.recommendationLetters || '',
+    personalStatement:     storedDocs.personalStatement || '',
+    cvResume:              storedDocs.cvResume || '',
+    otherDocuments:        storedDocs.otherDocuments || '',
+    updatedAt: new Date(),
+  };
+}
+
+/** Mirror a scholarship/public application into Student Intake (admin list). */
+export async function syncStudentFromApplication(body, storedDocs, { courseSlug } = {}) {
+  if (!isDbConnected()) return null;
+  const email = String(body.email || '').trim().toLowerCase();
+  if (!email) return null;
+  const existing = await StudentRegistration.findOne({ email }).select('_id').lean();
+  if (existing) return existing;
+  const payload = buildStudentPayload({ ...body, email, courseSlug: courseSlug || body.courseSlug || 'general' }, storedDocs);
+  const registration = await StudentRegistration.create(payload);
+  broadcastStudentRegistrationChange();
+  return registration;
 }
 
 function randomPassword() {
@@ -36,43 +101,19 @@ function buildStudentActivationUrl(user) {
     role: 'student',
     purpose: 'student-activate',
   };
-  const token = jwt.sign(payload, process.env.JWT_SECRET || 'intelera-secret-change-in-production', { expiresIn: '72h' });
+  const token = jwt.sign(payload, getJwtSecret(), { expiresIn: '72h' });
   const clientBase = process.env.CLIENT_URL || 'http://localhost:5173';
   return `${clientBase}/student/access?token=${encodeURIComponent(token)}`;
 }
 
-// ── SSE stream ────────────────────────────────────────────────────────────────
-router.get('/stream', async (req, res) => {
-  const token = req.query.token;
-  if (!token || typeof token !== 'string') return res.status(401).json({ error: 'Authentication required' });
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'intelera-secret-change-in-production');
-    const user = await User.findById(decoded.userId);
-    if (!user || user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
-  } catch {
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders?.();
-
-  res.write(`data: ${JSON.stringify({ event: 'connected', ts: Date.now() })}\n\n`);
-  listeners.add(res);
-
-  const keepAlive = setInterval(() => res.write(`: ping ${Date.now()}\n\n`), 25000);
-  req.on('close', () => {
-    clearInterval(keepAlive);
-    listeners.delete(res);
-  });
-});
+// ── SSE stream (admin only) ───────────────────────────────────────────────────
+router.get('/stream', createAdminSseRoute(listeners));
 
 // ── Public submit ─────────────────────────────────────────────────────────────
 router.post('/',
   body('fullName').notEmpty().trim(),
   body('email').isEmail().normalizeEmail(),
-  body('phone').optional().trim(),
+  body('phone').notEmpty().trim(),
   body('courseSlug').optional().trim(),
   body('country').optional().trim(),
   body('educationLevel').optional().trim(),
@@ -85,69 +126,70 @@ router.post('/',
       return res.status(503).json({ error: 'Admissions service is temporarily unavailable. Please try again shortly.' });
     }
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) {
+      const msgs = errors.array().map((e) => e.msg).filter(Boolean);
+      return res.status(400).json({
+        error: msgs.join('. ') || 'Invalid application data',
+        errors: errors.array(),
+      });
+    }
 
-    const payload = {
-      fullName:              req.body.fullName,
-      email:                 req.body.email,
-      phone:                 req.body.phone || '',
-      courseSlug:            req.body.courseSlug || 'general',
-      country:               req.body.country || '',
-      educationLevel:        req.body.educationLevel || '',
-      experienceLevel:       req.body.experienceLevel || '',
-      preferredLearningMode: req.body.preferredLearningMode || '',
-      preferredStartWindow:  req.body.preferredStartWindow || '',
-      motivation:            req.body.motivation || '',
-      university:            req.body.university || '',
-      course:                req.body.course || '',
-      degreeLevel:           req.body.degreeLevel || '',
-      intake:                req.body.intake || '',
-      studyMode:             req.body.studyMode || '',
-      campus:                req.body.campus || '',
-      passportPhoto:         req.body.passportPhoto || '',
-      oLevelCertificate:     req.body.oLevelCertificate || '',
-      aLevelCertificate:     req.body.aLevelCertificate || '',
-      highSchoolDiploma:     req.body.highSchoolDiploma || '',
-      waecResult:            req.body.waecResult || '',
-      academicTranscript:    req.body.academicTranscript || '',
-      bachelorDegree:        req.body.bachelorDegree || '',
-      masterDegree:          req.body.masterDegree || '',
-      englishProficiency:    req.body.englishProficiency || '',
-      healthCertificate:     req.body.healthCertificate || '',
-      passportBioPage:       req.body.passportBioPage || '',
-      recommendationLetters: req.body.recommendationLetters || '',
-      personalStatement:     req.body.personalStatement || '',
-      cvResume:              req.body.cvResume || '',
-      otherDocuments:        req.body.otherDocuments || '',
-      updatedAt: new Date(),
-    };
+    try {
+      const storedDocs = await persistMediaFields(req.body, DOC_FIELDS, 'students');
+      const oversizedField = DOC_FIELDS.find((f) => isDataUrl(storedDocs[f]));
+      if (oversizedField) {
+        return res.status(413).json({
+          error: 'Uploaded documents are too large to store inline. Please refresh the page and submit again.',
+        });
+      }
+      const payload = buildStudentPayload(req.body, storedDocs);
 
-    const existing = await StudentRegistration.findOne({ email: payload.email });
-    if (existing) return res.status(409).json({ error: 'An application with this email already exists.' });
+      const existing = await StudentRegistration.findOne({ email: payload.email });
+      if (existing) {
+        return res.status(409).json({ error: 'An application with this email already exists.' });
+      }
 
-    const registration = await StudentRegistration.create(payload);
-    emitChanged();
-    res.status(201).json({ id: registration._id, submitted: true });
+      const registration = await StudentRegistration.create(payload);
+      broadcastStudentRegistrationChange();
+      res.status(201).json({ id: registration._id, submitted: true });
+    } catch (err) {
+      logError('student-registrations/create', err);
+      if (err?.status === 413) {
+        return res.status(413).json({ error: err.message || 'One or more files are too large.' });
+      }
+      return sendRouteError(res, err, { scope: 'student-registrations/create' });
+    }
   }
 );
 
 // ── Admin: list (lightweight — no document blobs) ────────────────────────────
 // Returns a submittedDocFields array so the UI knows which docs exist without
 // transferring the actual base64 data (can be 15 MB per doc × 15 fields).
+const STUDENT_LIST_EXCLUDE = DOC_FIELDS.map((f) => `-${f}`).join(' ');
+
 router.get('/', authMiddleware, adminOnly, async (req, res) => {
   if (!isDbConnected()) return res.status(503).json({ error: 'db_unavailable' });
   try {
-    const rows = await StudentRegistration.find({}).sort({ createdAt: -1 }).lean();
-    const lightweight = rows.map(row => {
-      const submittedDocFields = DOC_FIELDS.filter(f => !!row[f]);
-      const out = { ...row, submittedDocFields };
-      DOC_FIELDS.forEach(f => delete out[f]);
-      return out;
-    });
-    res.json(lightweight);
+    const rows = await withDbQuery(
+      () =>
+        StudentRegistration.find({})
+          .select(STUDENT_LIST_EXCLUDE)
+          .sort({ createdAt: -1 })
+          .maxTimeMS(12000)
+          .lean(),
+      { fallback: [], label: 'student-registrations list', timeoutMs: 15000 },
+    );
+
+    // Doc presence is resolved on GET /:id (full record). Listing with aggregation
+    // over large base64 fields can hang MongoDB and surface as 500s in the browser.
+    res.json(
+      rows.map((row) => ({
+        ...row,
+        submittedDocFields: Array.isArray(row.submittedDocFields) ? row.submittedDocFields : [],
+      })),
+    );
   } catch (err) {
-    console.warn('[student-registrations] GET list failed:', err.message);
-    res.status(503).json({ error: 'db_unavailable' });
+    return sendRouteError(res, err, { scope: 'student-registrations/list' });
   }
 });
 
@@ -157,9 +199,9 @@ router.get('/:id', authMiddleware, adminOnly, async (req, res) => {
   try {
     const row = await StudentRegistration.findById(req.params.id).lean();
     if (!row) return res.status(404).json({ error: 'Not found' });
-    // Add convenience array of uploaded doc field names
-    row.submittedDocFields = DOC_FIELDS.filter(f => !!row[f]);
-    res.json(row);
+    const resolved = withResolvedDocUrls(req, row);
+    resolved.submittedDocFields = DOC_FIELDS.filter((f) => !!row[f]);
+    res.json(resolved);
   } catch (err) {
     console.warn('[student-registrations] GET single failed:', err.message);
     res.status(503).json({ error: 'db_unavailable' });
@@ -187,7 +229,7 @@ router.patch('/:id', authMiddleware, adminOnly,
     }
     row.updatedAt = new Date();
     await row.save();
-    emitChanged();
+    broadcastStudentRegistrationChange();
     res.json(row);
   }
 );
@@ -205,7 +247,7 @@ router.post('/:id/reject', authMiddleware, adminOnly,
     row.rejectionReason = req.body.reason || '';
     row.updatedAt = new Date();
     await row.save();
-    emitChanged();
+    broadcastStudentRegistrationChange();
     res.json({ rejected: true, id: row._id });
   }
 );
@@ -221,7 +263,7 @@ router.post('/:id/restore', authMiddleware, adminOnly, async (req, res) => {
   row.rejectionReason = '';
   row.updatedAt = new Date();
   await row.save();
-  emitChanged();
+  broadcastStudentRegistrationChange();
   res.json({ restored: true, status: row.status });
 });
 
@@ -234,24 +276,56 @@ router.post('/:id/provision-lms', authMiddleware, adminOnly, async (req, res) =>
   if (row.lmsProvisioned) return res.status(400).json({ error: 'LMS account already provisioned for this student.' });
 
   const now = new Date();
+  const courseLabel = row.course || row.courseSlug || 'general';
 
   // Link an existing user account if the email is already registered
   const existingUser = await User.findOne({ email: row.email });
   if (existingUser) {
+    if (existingUser.role !== 'student') {
+      return res.status(400).json({ error: 'This email belongs to a non-student account and cannot be used for LMS access.' });
+    }
+
+    const tempPassword = randomPassword();
+    existingUser.password = tempPassword;
+    existingUser.name = row.fullName || existingUser.name;
+    await existingUser.save();
+
     row.lmsProvisioned    = true;
     row.lmsProvisionedAt  = now;
     row.lmsUserId         = existingUser._id;
     row.status            = 'provisioned';
     row.updatedAt         = now;
     await row.save();
-    // Non-blocking notification
-    notifyStudentProvisioned({
-      name: row.fullName, email: existingUser.email, phone: row.phone,
-      tempPassword: null, courseSlug: row.courseSlug,
+
+    const notification = await notifyStudentProvisioned({
+      name: row.fullName,
+      email: existingUser.email,
+      phone: row.phone,
+      tempPassword,
+      courseSlug: courseLabel,
       activationUrl: buildStudentActivationUrl(existingUser),
-    }).catch(err => console.warn('[lms] Notify failed:', err.message));
-    emitChanged();
-    return res.json({ provisioned: true, email: existingUser.email, password: null, existing: true });
+    });
+
+    if (notification.emailResult?.error && !notification.emailResult?.dryRun) {
+      return res.status(502).json({
+        error: `LMS account linked but login email could not be sent: ${notification.emailResult.error}`,
+        provisioned: true,
+        email: existingUser.email,
+        password: tempPassword,
+        existing: true,
+        notification,
+      });
+    }
+
+    broadcastStudentRegistrationChange();
+    publishContentChange('users');
+    return res.json({
+      provisioned: true,
+      email: existingUser.email,
+      password: tempPassword,
+      existing: true,
+      notification,
+    });
   }
 
   // Create a fresh student account
@@ -263,14 +337,36 @@ router.post('/:id/provision-lms', authMiddleware, adminOnly, async (req, res) =>
   row.status            = 'provisioned';
   row.updatedAt         = now;
   await row.save();
-  // Non-blocking notification
-  notifyStudentProvisioned({
-    name: row.fullName, email: user.email, phone: row.phone,
-    tempPassword, courseSlug: row.courseSlug,
+
+  const notification = await notifyStudentProvisioned({
+    name: row.fullName,
+    email: user.email,
+    phone: row.phone,
+    tempPassword,
+    courseSlug: courseLabel,
     activationUrl: buildStudentActivationUrl(user),
-  }).catch(err => console.warn('[lms] Notify failed:', err.message));
-  emitChanged();
-  res.json({ provisioned: true, email: user.email, password: tempPassword, existing: false });
+  });
+
+  if (notification.emailResult?.error && !notification.emailResult?.dryRun) {
+    return res.status(502).json({
+      error: `LMS account created but login email could not be sent: ${notification.emailResult.error}`,
+      provisioned: true,
+      email: user.email,
+      password: tempPassword,
+      existing: false,
+      notification,
+    });
+  }
+
+  broadcastStudentRegistrationChange();
+  publishContentChange('users');
+  res.json({
+    provisioned: true,
+    email: user.email,
+    password: tempPassword,
+    existing: false,
+    notification,
+  });
 });
 
 export default router;

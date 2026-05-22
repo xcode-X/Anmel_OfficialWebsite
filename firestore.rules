@@ -1,0 +1,141 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function adminProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasAdminProfile() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && adminProfile().role == 'admin';
+    }
+
+    function adminEmailLower() {
+      return request.auth.token.email != null
+        ? request.auth.token.email.lower()
+        : '';
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.role == 'admin' ||
+        request.auth.token.admin == true ||
+        hasAdminProfile() ||
+        adminEmailLower() in [
+          'demo.admin@anmelinc.com',
+          'admin@anmelinc.com',
+          'admin@intelera.com'
+        ]
+      );
+    }
+
+    function isAgent() {
+      return isSignedIn() && request.auth.token.role == 'agent';
+    }
+
+    function isOwnAdminBootstrap(userId) {
+      return isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.role == 'admin'
+        && request.resource.data.email == adminEmailLower();
+    }
+
+    match /meta/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /blogPosts/{id} {
+      allow read: if isAdmin() || resource.data.published != false;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /caseStudies/{id} {
+      allow read: if isAdmin() || resource.data.published != false;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /courses/{id} {
+      allow read: if isAdmin() || resource.data.published != false;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /services/{id} {
+      allow read: if isAdmin() || resource.data.published != false;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /lmsContent/{id} {
+      allow read: if isAdmin() || resource.data.published != false;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /scholarships/{id} {
+      allow read: if isAdmin() || resource.data.isPublished != false;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /testimonials/{id} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /universities/{id} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /studentRegistrations/{id} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /scholarshipApplications/{id} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /scholarshipApplications/{appId}/files/{fileId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /contactSubmissions/{id} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /newsletterSubscribers/{id} {
+      allow create: if true;
+      allow read, delete: if isAdmin();
+    }
+
+    match /agents/{id} {
+      allow create: if true;
+      allow read: if isAdmin() || (isAgent() && request.auth.uid == id);
+      allow update: if isAdmin() || (isAgent() && request.auth.uid == id);
+      allow delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow create: if isOwnAdminBootstrap(userId) || isAdmin();
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow update: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow delete: if isAdmin();
+    }
+
+    match /securityScanRecords/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -18,7 +18,7 @@ import {
   Code2,
   Palette,
 } from 'lucide-react';
-import api from '../lib/api';
+import api, { publicApi } from '../lib/api';
 import { deferIdle } from '../lib/deferIdle';
 import { defaultCourses } from '../lib/coursesData';
 import { mergeCourseDetail } from '../lib/mergeCourseDetail';
@@ -85,7 +85,7 @@ export default function Education() {
     let cancelled = false;
     const cancel = deferIdle(() => {
       if (cancelled) return;
-      api.get('/courses').then((d) => { if (!cancelled) setCourses(d); }).catch(() => {});
+      publicApi.courses().then((d) => { if (!cancelled) setCourses(Array.isArray(d) ? d : []); }).catch(() => {});
     }, 400);
     return () => {
       cancelled = true;

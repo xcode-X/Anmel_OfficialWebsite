@@ -63,6 +63,8 @@ export default function CourseApplication() {
         email: form.email.trim(),
         phone: form.phone.trim(),
         courseSlug: slug,
+        applicationType: 'intern',
+        course: courseTitle,
       });
       setState('success');
       setForm(initialForm);
@@ -81,10 +83,10 @@ export default function CourseApplication() {
             ← Back to program
           </Link>
           <h1 className="mt-4 text-3xl font-bold text-stone-900 sm:text-4xl" style={{ fontFamily: 'var(--font-display)' }}>
-            Apply for {courseTitle}
+            Intern application — {courseTitle}
           </h1>
           <p className="mt-2 max-w-2xl text-stone-600">
-            Complete this registration form to apply. Admissions receives your submission immediately in the intake dashboard.
+            Complete this form to apply for the academy program. Your submission appears immediately in the intern application queue for review.
           </p>
         </motion.div>
 

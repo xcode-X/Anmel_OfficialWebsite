@@ -1,8 +1,2 @@
-import mongoose from 'mongoose';
-
-const newsletterSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  createdAt: { type: Date, default: Date.now },
-});
-
-export default mongoose.model('NewsletterSubscriber', newsletterSchema);
+import { db, COLLECTIONS } from '../lib/firestoreDb.js';
+export default db(COLLECTIONS.newsletterSubscribers);

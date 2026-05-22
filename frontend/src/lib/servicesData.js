@@ -1,7 +1,9 @@
 /**
- * Default services used when API is unavailable (fallback for Nav and Services pages).
- * Each service includes detailed methodology, features, and targeted outcomes.
+ * Canonical security services — single source of truth for all public pages.
+ * Not managed via admin; updates ship with the codebase.
  */
+import { getServiceNavPreviewImage } from './siteImages';
+
 export const defaultServices = [
   {
     slug: 'security-assessment',
@@ -14,15 +16,17 @@ export const defaultServices = [
       'Configuration Review for Cloud & On-Premise',
       'Prioritized Remediation Roadmaps',
       'Executive & Technical Reporting',
-      'Post-Remediation Verification'
+      'Post-Remediation Verification',
     ],
     process: [
       { step: 1, title: 'Reconnaissance', description: 'Information gathering and asset mapping.' },
       { step: 2, title: 'Vulnerability Analysis', description: 'Identifying potential entry points and misconfigurations.' },
       { step: 3, title: 'Exploitation', description: 'Manual verification of risks through controlled testing.' },
-      { step: 4, title: 'Reporting', description: 'Detailed findings with risk scoring and mitigation steps.' }
+      { step: 4, title: 'Reporting', description: 'Detailed findings with risk scoring and mitigation steps.' },
     ],
-    outcomes: 'A clear, validated map of your security posture with a prioritized plan to close critical gaps.'
+    outcomes: 'A clear, validated map of your security posture with a prioritized plan to close critical gaps.',
+    color: '#5D1C6A',
+    idealFor: 'Teams preparing for audits, post-incident reviews, or annual security health checks.',
   },
   {
     slug: 'secure-development',
@@ -35,15 +39,17 @@ export const defaultServices = [
       'CI/CD Pipeline Security Integration',
       'SAST, DAST & IAST Implementation',
       'Container & Microservices Hardening',
-      'Developer Security Training'
+      'Developer Security Training',
     ],
     process: [
       { step: 1, title: 'Design Review', description: 'Identifying structural security flaws in early stages.' },
       { step: 2, title: 'Secure Coding', description: 'Helping developers implement best practices (OWASP Top 10).' },
       { step: 3, title: 'Automated Testing', description: 'Deploying security guards within your build pipelines.' },
-      { step: 4, title: 'Compliance Check', description: 'Ensuring code meets regulatory and industry standards.' }
+      { step: 4, title: 'Compliance Check', description: 'Ensuring code meets regulatory and industry standards.' },
     ],
-    outcomes: 'Applications that are resilient by design, reducing the cost of security fixes and accelerating time-to-market.'
+    outcomes: 'Applications that are resilient by design, reducing the cost of security fixes and accelerating time-to-market.',
+    color: '#2FA084',
+    idealFor: 'Product teams shipping web apps who want security baked in—not bolted on after launch.',
   },
   {
     slug: 'compliance',
@@ -56,15 +62,17 @@ export const defaultServices = [
       'ISO 27001 Implementation & Audit Prep',
       'Policy & Procedure Development',
       'Continuous Compliance Monitoring',
-      'Third-party Risk Management'
+      'Third-party Risk Management',
     ],
     process: [
       { step: 1, title: 'Gap Discovery', description: 'Assessing current state against target framework.' },
       { step: 2, title: 'Remediation', description: 'Implementing required controls and evidence collection.' },
       { step: 3, title: 'Audit Simulation', description: 'Internal audit to verify readiness.' },
-      { step: 4, title: 'Certification Support', description: 'Supporting you throughout the official audit process.' }
+      { step: 4, title: 'Certification Support', description: 'Supporting you throughout the official audit process.' },
     ],
-    outcomes: 'Achieved compliance certifications that build trust with enterprise partners and regulators.'
+    outcomes: 'Achieved compliance certifications that build trust with enterprise partners and regulators.',
+    color: '#0EA5E9',
+    idealFor: 'Regulated industries, SaaS vendors selling to enterprise, and teams facing their first formal audit.',
   },
   {
     slug: 'monitoring',
@@ -77,15 +85,17 @@ export const defaultServices = [
       'Incident Response Plan Development',
       'Threat Hunting & Log Analysis',
       'Digital Forensics & Incident Analysis',
-      'Post-Incident Recovery Support'
+      'Post-Incident Recovery Support',
     ],
     process: [
       { step: 1, title: 'Visibility Prep', description: 'Defining high-value assets and log sources.' },
       { step: 2, title: 'Detection Logic', description: 'Building rules to identify abnormal behavior.' },
       { step: 3, title: 'Incident Response', description: 'Executing containment and eradication playbooks.' },
-      { step: 4, title: 'Lessons Learned', description: 'Iterating on defenses based on real-world data.' }
+      { step: 4, title: 'Lessons Learned', description: 'Iterating on defenses based on real-world data.' },
     ],
-    outcomes: 'Reduced mean-time-to-detection (MTTD) and effective response strategies that protect your business continuity.'
+    outcomes: 'Reduced mean-time-to-detection (MTTD) and effective response strategies that protect your business continuity.',
+    color: '#F59E0B',
+    idealFor: 'Organizations with SIEM/EDR in place but too many alerts—or none at all when it matters.',
   },
   {
     slug: 'cloud-security',
@@ -98,15 +108,17 @@ export const defaultServices = [
       'Kubernetes & Docker Security',
       'Serverless Security Assessment',
       'Network Segmentation in the Cloud',
-      'Cloud Compliance Automation'
+      'Cloud Compliance Automation',
     ],
     process: [
       { step: 1, title: 'Cloud Audit', description: 'Reviewing current cloud configuration and sprawl.' },
       { step: 2, title: 'Risk Mapping', description: 'Identifying identity and configuration risks.' },
       { step: 3, title: 'Hardening', description: 'Applying best practices and automated guards.' },
-      { step: 4, title: 'Monitoring', description: 'Setting up cloud-native security alerts.' }
+      { step: 4, title: 'Monitoring', description: 'Setting up cloud-native security alerts.' },
     ],
-    outcomes: 'A hardened cloud footprint optimized for both security and operational efficiency.'
+    outcomes: 'A hardened cloud footprint optimized for both security and operational efficiency.',
+    color: '#7C3AED',
+    idealFor: 'Teams migrating to cloud or scaling Kubernetes without a dedicated cloud security lead.',
   },
   {
     slug: 'training',
@@ -119,14 +131,30 @@ export const defaultServices = [
       'Phishing Simulation & Reporting',
       'Executive Security Briefings',
       'Custom Security Policy Training',
-      'Social Engineering Assessments'
+      'Social Engineering Assessments',
     ],
     process: [
       { step: 1, title: 'Baseline Check', description: 'Measuring current security awareness levels.' },
       { step: 2, title: 'Custom Training', description: 'Delivering role-based security education.' },
       { step: 3, title: 'Reinforcement', description: 'Running phishing exercises and workshops.' },
-      { step: 4, title: 'Metric Analysis', description: 'Tracking improvements in security behavior.' }
+      { step: 4, title: 'Metric Analysis', description: 'Tracking improvements in security behavior.' },
     ],
-    outcomes: 'A reduced human risk profile and a measurable increase in employee security vigilance.'
-  }
+    outcomes: 'A reduced human risk profile and a measurable increase in employee security vigilance.',
+    color: '#2FA084',
+    idealFor: 'Leadership teams investing in culture change after incidents or before compliance audits.',
+  },
 ];
+
+/** Attach hero/card images from siteImages */
+export function getServices() {
+  return defaultServices.map((s) => ({
+    ...s,
+    image: getServiceNavPreviewImage(s.slug),
+  }));
+}
+
+export function getServiceBySlug(slug) {
+  const found = defaultServices.find((s) => s.slug === slug);
+  if (!found) return null;
+  return { ...found, image: getServiceNavPreviewImage(slug) };
+}

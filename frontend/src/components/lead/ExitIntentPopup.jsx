@@ -21,19 +21,6 @@ export default function ExitIntentPopup() {
     return () => document.removeEventListener('mouseleave', handleMouseLeave);
   }, [dismissed]);
 
-  // First-time visit: show popup after 10 seconds if not already shown
-  useEffect(() => {
-    const key = 'intelera_exit_dismissed';
-    if (typeof window === 'undefined' || localStorage.getItem(key)) return;
-    const t = setTimeout(() => {
-      if (!shownRef.current) {
-        shownRef.current = true;
-        setShow(true);
-      }
-    }, 10000);
-    return () => clearTimeout(t);
-  }, []);
-
   const close = () => {
     setShow(false);
     setDismissed(true);

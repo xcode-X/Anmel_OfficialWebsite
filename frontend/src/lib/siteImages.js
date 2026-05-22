@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Central image URLs for the Anmel Inc site.
  * Unsplash URLs use ixlib + fit=crop so images resolve reliably in the browser.
  * Photo IDs are verified (GET 200) against images.unsplash.com.
@@ -40,11 +40,67 @@ export const blogImages = {
   security: U(IDS.codeSecurity, 1000, 600),
   compliance: U(IDS.charts, 1000, 600),
   development: U(IDS.techAbstract, 1000, 600),
+  education: U(IDS.meeting, 1000, 600),
+  news: U(IDS.matrix, 1000, 600),
+  default: U(IDS.codeSecurity, 1000, 600),
 };
+
+/** True for uploaded base64, remote URLs, or API-served media paths. */
+export function isMediaSrc(src) {
+  if (!src || typeof src !== 'string') return false;
+  const s = src.trim();
+  return (
+    s.startsWith('data:image/') ||
+    s.startsWith('blob:') ||
+    s.startsWith('http://') ||
+    s.startsWith('https://') ||
+    s.startsWith('/api/') ||
+    s.startsWith('/uploads/')
+  );
+}
+
+/** Card/hero image for a blog post (uploaded cover, API route, or category stock photo). */
+export function getBlogCardImage(post) {
+  if (!post) return blogImages.default;
+  const direct = post.featuredImage || post.image;
+  if (isMediaSrc(direct)) {
+    return direct;
+  }
+  if (post.hasFeaturedImage && post.slug) {
+    return `/api/blog/${encodeURIComponent(post.slug)}/cover`;
+  }
+  const cat = String(post.category || 'Security').toLowerCase();
+  if (cat.includes('compliance')) return blogImages.compliance;
+  if (cat.includes('develop')) return blogImages.development;
+  if (cat.includes('education')) return blogImages.education;
+  if (cat.includes('news')) return blogImages.news;
+  return blogImages.security;
+}
+
+/** Alias for blog/case study uploads */
+export const isBlogImageSrc = isMediaSrc;
+
+/** Card image for a case study (uploaded, API cover, or sector stock). */
+export function getCaseStudyCardImage(study) {
+  if (!study) return caseStudyImages.financial;
+  const direct = study.image;
+  if (isMediaSrc(direct)) return direct;
+  if (study.hasImage && study.slug) {
+    return `/api/case-studies/${encodeURIComponent(study.slug)}/cover`;
+  }
+  const cat = String(study.category || '').toLowerCase();
+  if (cat.includes('health')) return caseStudyImages.healthcare;
+  if (cat.includes('commerce') || cat.includes('retail')) return caseStudyImages.ecommerce;
+  return caseStudyImages.financial;
+}
 
 export const heroImage = U(IDS.workspace, 1600, 1200);
 
 export const aboutTeamImage = U(IDS.meeting, 1200, 800);
+
+/** About page hero — primary + accent imagery */
+export const aboutHeroImage = U(IDS.codeSecurity, 1200, 900);
+export const aboutHeroAccent = U(IDS.assessment, 700, 700);
 
 /** Extra imagery for About page sections */
 export const aboutGalleryImages = {
@@ -107,8 +163,11 @@ export default {
   testimonialAvatars,
   caseStudyImages,
   blogImages,
+  getBlogCardImage,
   heroImage,
   aboutTeamImage,
+  aboutHeroImage,
+  aboutHeroAccent,
   aboutGalleryImages,
   contactImage,
   servicesHeroImage,

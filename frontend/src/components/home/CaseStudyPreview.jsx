@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Clock, Briefcase } from 'lucide-react';
-import api from '../../lib/api';
+import { publicApi } from '../../lib/api';
 import { deferIdle } from '../../lib/deferIdle';
 import RemoteImage from '../ui/RemoteImage';
 
@@ -14,8 +14,17 @@ export default function CaseStudyPreview() {
     let cancelled = false;
     const cancel = deferIdle(() => {
       if (cancelled) return;
-      api.get('/case-studies')
-        .then((d) => { if (!cancelled) { setCases(Array.isArray(d) ? d.slice(0, 3) : []); setLoaded(true); } })
+      publicApi.caseStudies()
+        .then((d) => {
+          if (!cancelled) {
+            const list = (Array.isArray(d) ? d : []).map((c) => ({
+              ...c,
+              image: c.image || (c.hasImage && c.slug ? `/api/case-studies/${c.slug}/cover` : null),
+            }));
+            setCases(list.slice(0, 3));
+            setLoaded(true);
+          }
+        })
         .catch(() => { if (!cancelled) { setCases([]); setLoaded(true); } });
     }, 400);
     return () => { cancelled = true; cancel(); };

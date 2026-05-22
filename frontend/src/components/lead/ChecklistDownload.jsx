@@ -1,19 +1,5 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { saveAs } from 'file-saver';
-import {
-  Document,
-  Packer,
-  Paragraph,
-  HeadingLevel,
-  TextRun,
-  Table,
-  TableCell,
-  TableRow,
-  WidthType,
-  BorderStyle,
-  ImageRun,
-} from 'docx';
 import logoAnmel from '../../images/logo_anmel_transparent.png';
 
 const checklistSections = [
@@ -75,132 +61,160 @@ export default function ChecklistDownload() {
 
   const handleDownload = async () => {
     setDownloading(true);
-    const reviewDate = new Date();
-    const nextReview = new Date(reviewDate);
-    nextReview.setMonth(nextReview.getMonth() + 3);
-    const assessmentId = `CHK-${Date.now().toString().slice(-8)}`;
-
-    const tailoredRecommendations = [
-      `Industry focus: ${industry} (${riskTier} risk profile).`,
-      `Team size band: ${teamSize}. Define control ownership by function (IT, Security, Engineering, Operations).`,
-      `Compliance targets: ${complianceScope}. Map each control to evidence artifacts before audit windows.`,
-      'Use a weekly security standup to track overdue remediation and blocked controls.',
-      'Run quarterly executive risk reviews with metrics: open high findings, MTTR, MFA coverage, backup restore success.',
-    ];
-
-    const rows = [
-      new TableRow({
-        children: [
-          new TableCell({ children: [new Paragraph({ text: 'Control' })] }),
-          new TableCell({ children: [new Paragraph({ text: 'Review cadence' })] }),
-          new TableCell({ children: [new Paragraph({ text: 'Owner' })] }),
-          new TableCell({ children: [new Paragraph({ text: 'Status' })] }),
-        ],
-      }),
-      ...checklistSections.flatMap((section) =>
-        section.items.map(([control, cadence]) =>
-          new TableRow({
-            children: [
-              new TableCell({ children: [new Paragraph({ text: `${section.title}: ${control}` })] }),
-              new TableCell({ children: [new Paragraph({ text: cadence })] }),
-              new TableCell({ children: [new Paragraph({ text: '________________' })] }),
-              new TableCell({ children: [new Paragraph({ text: 'Not started / In progress / Complete' })] }),
-            ],
-          })
-        )
-      ),
-    ];
-
-    let logoImage = null;
     try {
-      const res = await fetch(logoAnmel);
-      const img = await res.arrayBuffer();
-      logoImage = new ImageRun({
-        data: img,
-        transformation: { width: 220, height: 70 },
-      });
-    } catch {
-      logoImage = null;
-    }
+      const [
+        docx,
+        { saveAs },
+      ] = await Promise.all([
+        import('docx'),
+        import('file-saver'),
+      ]);
 
-    const doc = new Document({
-      sections: [
-        {
+      const {
+        Document,
+        Packer,
+        Paragraph,
+        HeadingLevel,
+        TextRun,
+        Table,
+        TableCell,
+        TableRow,
+        WidthType,
+        BorderStyle,
+        ImageRun,
+      } = docx;
+
+      const reviewDate = new Date();
+      const nextReview = new Date(reviewDate);
+      nextReview.setMonth(nextReview.getMonth() + 3);
+      const assessmentId = `CHK-${Date.now().toString().slice(-8)}`;
+
+      const tailoredRecommendations = [
+        `Industry focus: ${industry} (${riskTier} risk profile).`,
+        `Team size band: ${teamSize}. Define control ownership by function (IT, Security, Engineering, Operations).`,
+        `Compliance targets: ${complianceScope}. Map each control to evidence artifacts before audit windows.`,
+        'Use a weekly security standup to track overdue remediation and blocked controls.',
+        'Run quarterly executive risk reviews with metrics: open high findings, MTTR, MFA coverage, backup restore success.',
+      ];
+
+      const rows = [
+        new TableRow({
           children: [
-            ...(logoImage ? [new Paragraph({ children: [logoImage] })] : []),
-            new Paragraph({
-              heading: HeadingLevel.TITLE,
-              children: [new TextRun({ text: 'Anmel Inc Client Security Checklist', bold: true })],
-            }),
-            new Paragraph({ text: 'Institution: Anmel Inc' }),
-            new Paragraph({ text: `Client organization: ${orgName}` }),
-            new Paragraph({ text: `Industry: ${industry}` }),
-            new Paragraph({ text: `Team size: ${teamSize}` }),
-            new Paragraph({ text: `Risk tier: ${riskTier}` }),
-            new Paragraph({ text: `Compliance scope: ${complianceScope}` }),
-            new Paragraph({ text: `Checklist ID: ${assessmentId}` }),
-            new Paragraph({ text: `Generated: ${reviewDate.toLocaleDateString()}` }),
-            new Paragraph({ text: `Next recommended review: ${nextReview.toLocaleDateString()}` }),
-            new Paragraph({ text: '' }),
-            new Paragraph({
+            new TableCell({ children: [new Paragraph({ text: 'Control' })] }),
+            new TableCell({ children: [new Paragraph({ text: 'Review cadence' })] }),
+            new TableCell({ children: [new Paragraph({ text: 'Owner' })] }),
+            new TableCell({ children: [new Paragraph({ text: 'Status' })] }),
+          ],
+        }),
+        ...checklistSections.flatMap((section) =>
+          section.items.map(([control, cadence]) =>
+            new TableRow({
               children: [
-                new TextRun({
-                  text: 'This checklist is customized for client operational readiness, application security, and governance best practices.',
-                }),
+                new TableCell({ children: [new Paragraph({ text: `${section.title}: ${control}` })] }),
+                new TableCell({ children: [new Paragraph({ text: cadence })] }),
+                new TableCell({ children: [new Paragraph({ text: '________________' })] }),
+                new TableCell({ children: [new Paragraph({ text: 'Not started / In progress / Complete' })] }),
               ],
-            }),
-            new Paragraph({ text: '' }),
-            new Paragraph({ heading: HeadingLevel.HEADING_2, text: 'Tailored Anmel Inc Recommendations' }),
-            ...tailoredRecommendations.map((line, idx) =>
+            })
+          )
+        ),
+      ];
+
+      let logoImage = null;
+      try {
+        const res = await fetch(logoAnmel);
+        const img = await res.arrayBuffer();
+        logoImage = new ImageRun({
+          data: img,
+          transformation: { width: 220, height: 70 },
+        });
+      } catch {
+        logoImage = null;
+      }
+
+      const doc = new Document({
+        sections: [
+          {
+            children: [
+              ...(logoImage ? [new Paragraph({ children: [logoImage] })] : []),
               new Paragraph({
-                children: [new TextRun({ text: `${idx + 1}. ${line}` })],
-              })
-            ),
-            new Paragraph({ text: '' }),
-            ...checklistSections.flatMap((section) => [
-              new Paragraph({
-                heading: HeadingLevel.HEADING_2,
-                children: [new TextRun({ text: section.title, bold: true })],
+                heading: HeadingLevel.TITLE,
+                children: [new TextRun({ text: 'Anmel Inc Client Security Checklist', bold: true })],
               }),
-              ...section.items.map(([item], idx) =>
+              new Paragraph({ text: 'Institution: Anmel Inc' }),
+              new Paragraph({ text: `Client organization: ${orgName}` }),
+              new Paragraph({ text: `Industry: ${industry}` }),
+              new Paragraph({ text: `Team size: ${teamSize}` }),
+              new Paragraph({ text: `Risk tier: ${riskTier}` }),
+              new Paragraph({ text: `Compliance scope: ${complianceScope}` }),
+              new Paragraph({ text: `Checklist ID: ${assessmentId}` }),
+              new Paragraph({ text: `Generated: ${reviewDate.toLocaleDateString()}` }),
+              new Paragraph({ text: `Next recommended review: ${nextReview.toLocaleDateString()}` }),
+              new Paragraph({ text: '' }),
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'This checklist is customized for client operational readiness, application security, and governance best practices.',
+                  }),
+                ],
+              }),
+              new Paragraph({ text: '' }),
+              new Paragraph({ heading: HeadingLevel.HEADING_2, text: 'Tailored Anmel Inc Recommendations' }),
+              ...tailoredRecommendations.map((line, idx) =>
                 new Paragraph({
-                  children: [new TextRun({ text: `${idx + 1}. ${item}` })],
+                  children: [new TextRun({ text: `${idx + 1}. ${line}` })],
                 })
               ),
               new Paragraph({ text: '' }),
-            ]),
-            new Paragraph({ heading: HeadingLevel.HEADING_2, text: 'Control Matrix' }),
-            new Table({
-              width: { size: 100, type: WidthType.PERCENTAGE },
-              rows,
-              borders: {
-                top: { style: BorderStyle.SINGLE, size: 1, color: '777777' },
-                bottom: { style: BorderStyle.SINGLE, size: 1, color: '777777' },
-                left: { style: BorderStyle.SINGLE, size: 1, color: '777777' },
-                right: { style: BorderStyle.SINGLE, size: 1, color: '777777' },
-                insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: '999999' },
-                insideVertical: { style: BorderStyle.SINGLE, size: 1, color: '999999' },
-              },
-            }),
-            new Paragraph({ text: '' }),
-            new Paragraph({ heading: HeadingLevel.HEADING_2, text: 'Evidence & Sign-off' }),
-            new Paragraph({ text: 'Security Lead: ____________________   Date: ____________' }),
-            new Paragraph({ text: 'IT/Engineering Lead: ______________   Date: ____________' }),
-            new Paragraph({ text: 'Executive Sponsor: ________________   Date: ____________' }),
-            new Paragraph({ text: '' }),
-            new Paragraph({
-              children: [new TextRun({ text: 'Prepared by Anmel Inc | Monrovia, Liberia' })],
-            }),
-          ],
-        },
-      ],
-    });
+              ...checklistSections.flatMap((section) => [
+                new Paragraph({
+                  heading: HeadingLevel.HEADING_2,
+                  children: [new TextRun({ text: section.title, bold: true })],
+                }),
+                ...section.items.map(([item], idx) =>
+                  new Paragraph({
+                    children: [new TextRun({ text: `${idx + 1}. ${item}` })],
+                  })
+                ),
+                new Paragraph({ text: '' }),
+              ]),
+              new Paragraph({ heading: HeadingLevel.HEADING_2, text: 'Control Matrix' }),
+              new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                rows,
+                borders: {
+                  top: { style: BorderStyle.SINGLE, size: 1, color: '777777' },
+                  bottom: { style: BorderStyle.SINGLE, size: 1, color: '777777' },
+                  left: { style: BorderStyle.SINGLE, size: 1, color: '777777' },
+                  right: { style: BorderStyle.SINGLE, size: 1, color: '777777' },
+                  insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: '999999' },
+                  insideVertical: { style: BorderStyle.SINGLE, size: 1, color: '999999' },
+                },
+              }),
+              new Paragraph({ text: '' }),
+              new Paragraph({ heading: HeadingLevel.HEADING_2, text: 'Evidence & Sign-off' }),
+              new Paragraph({ text: 'Security Lead: ____________________   Date: ____________' }),
+              new Paragraph({ text: 'IT/Engineering Lead: ______________   Date: ____________' }),
+              new Paragraph({ text: 'Executive Sponsor: ________________   Date: ____________' }),
+              new Paragraph({ text: '' }),
+              new Paragraph({
+                children: [new TextRun({ text: 'Prepared by Anmel Inc | Monrovia, Liberia' })],
+              }),
+            ],
+          },
+        ],
+      });
 
-    const blob = await Packer.toBlob(doc);
-    const safeClient = orgName.trim().replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'client';
-    saveAs(blob, `Anmel Inc-security-checklist-${safeClient}.docx`);
-    setDownloaded(true);
-    setDownloading(false);
+      const blob = await Packer.toBlob(doc);
+      const safeClient = orgName.trim().replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'client';
+      saveAs(blob, `Anmel Inc-security-checklist-${safeClient}.docx`);
+      setDownloaded(true);
+    } catch (err) {
+      console.error(err);
+      alert('Could not generate checklist. Please try again.');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (

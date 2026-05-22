@@ -1,10 +1,13 @@
-﻿import { useEffect, useState, useRef, useCallback } from 'react';
+﻿import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { api, auth, studentRegistrations } from '../../lib/api';
+import { ADMIN_BASE } from '../../lib/adminPaths';
+import { getAcademyCourseTitle, isInternApplication } from '../../lib/applicationTypes';
 import {
   Loader2, Wifi, WifiOff, Building, Clock, X, Eye, Download,
   FileText, CheckCircle2, XCircle, RotateCcw, GraduationCap,
   ChevronRight, AlertTriangle, User, Mail, Phone, Globe,
-  Copy, KeyRound,
+  Copy, ArrowLeft,
 } from 'lucide-react';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -104,9 +107,104 @@ function PasswordCell({ password }) {
   );
 }
 
-// ─── Detail Overlay ───────────────────────────────────────────────────────────
+// ─── LMS success modal ──────────────────────────────────────────────────────
 
-function DetailOverlay({ id, onClose, onRefresh }) {
+function LmsSuccessModal({ open, result, studentName, onClose }) {
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [open, onClose]);
+
+  if (!open || !result) return null;
+
+  const emailSent = result.notification?.emailResult?.sent === true;
+  const emailDryRun = result.notification?.emailResult?.dryRun === true;
+  const portalUrl = `${window.location.origin}/student`;
+
+  return (
+    <div
+      className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="lms-success-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-2xl border border-[#2FA084]/30 bg-[#0A0F1A] shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 pt-8 pb-6 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#2FA084]/15 border border-[#2FA084]/30">
+            <CheckCircle2 className="h-8 w-8 text-[#2FA084]" />
+          </div>
+          <h2 id="lms-success-title" className="text-xl font-bold text-white">
+            LMS Account Created Successfully
+          </h2>
+          <p className="mt-2 text-sm text-neutral-400">
+            {studentName ? (
+              <>An LMS account has been created for <strong className="text-white">{studentName}</strong>.</>
+            ) : (
+              'The student LMS account has been created.'
+            )}
+          </p>
+        </div>
+
+        <div className="border-t border-white/10 px-6 py-5 space-y-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500 mb-1">Email / Username</p>
+            <p className="text-sm text-white font-mono break-all">{result.email}</p>
+          </div>
+
+          {result.password ? (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500 mb-1">Temporary Password</p>
+              <PasswordCell password={result.password} />
+            </div>
+          ) : null}
+
+          {emailSent ? (
+            <div className="rounded-lg border border-[#2FA084]/30 bg-[#2FA084]/10 px-3 py-2.5 text-sm text-[#2FA084]">
+              Login credentials were sent to <strong>{result.email}</strong>. The student can sign in at the LMS portal right away.
+            </div>
+          ) : emailDryRun ? (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-300">
+              Email could not be sent automatically — SMTP is not configured on the server. Share the credentials above with the student manually, or set <code className="text-xs">SMTP_USER</code> and <code className="text-xs">SMTP_PASS</code> in <code className="text-xs">backend/.env</code>.
+            </div>
+          ) : (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">
+              LMS account created, but the login email failed to send
+              {result.notification?.emailResult?.error ? `: ${result.notification.emailResult.error}` : '.'}
+              {' '}Share the credentials above with the student manually.
+            </div>
+          )}
+
+          <p className="text-xs text-neutral-500">
+            Student portal:{' '}
+            <a href={portalUrl} target="_blank" rel="noopener noreferrer" className="text-[#2FA084] hover:underline break-all">
+              {portalUrl}
+            </a>
+          </p>
+        </div>
+
+        <div className="border-t border-white/10 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-[#2FA084] px-4 py-3 text-sm font-bold text-[#0A0F1A] hover:bg-[#3CD1AD] transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Application detail (main content) ──────────────────────────────────────
+
+function ApplicationDetail({ id, onClose, onRefresh }) {
   const [detail, setDetail]         = useState(null);
   const [loading, setLoading]       = useState(true);
   const [busy, setBusy]             = useState('');       // which action is in-flight
@@ -114,6 +212,7 @@ function DetailOverlay({ id, onClose, onRefresh }) {
   const [rejectReason, setRejectReason] = useState('');
   const [notice, setNotice]         = useState(null);     // { type: 'success'|'error', msg }
   const [lmsResult, setLmsResult]   = useState(null);     // result from provision-lms API
+  const [lmsModalOpen, setLmsModalOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -128,13 +227,6 @@ function DetailOverlay({ id, onClose, onRefresh }) {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
-
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
 
   const doFlag = async (patch) => {
     setBusy('flag');
@@ -178,7 +270,11 @@ function DetailOverlay({ id, onClose, onRefresh }) {
     setNotice(null);
     try {
       const result = await studentRegistrations.provision(id);
+      if (!result?.provisioned) {
+        throw new Error('LMS account could not be created. Please try again.');
+      }
       setLmsResult(result);
+      setLmsModalOpen(true);
       await load();
       onRefresh();
     } catch (err) {
@@ -186,27 +282,67 @@ function DetailOverlay({ id, onClose, onRefresh }) {
     } finally { setBusy(''); }
   };
 
+  const closeLmsModal = () => {
+    setLmsModalOpen(false);
+    setLmsResult(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-3 text-white/40">
+        <Loader2 className="w-6 h-6 animate-spin" />
+        <p className="text-sm">Loading application…</p>
+      </div>
+    );
+  }
+
+  if (!detail) {
+    return (
+      <div className="text-center py-20 text-white">
+        <p className="text-red-400 mb-6">Application not found.</p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex items-center gap-2 text-sm font-semibold text-white/50 hover:text-[#2FA084] transition"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Intern application
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/60 backdrop-blur-sm">
-      <div className="relative h-full w-full max-w-2xl overflow-y-auto bg-[#0A0F1A] border-l border-white/10 shadow-2xl flex flex-col">
+    <div className="max-w-4xl space-y-6">
+      <LmsSuccessModal
+        open={lmsModalOpen}
+        result={lmsResult}
+        studentName={detail.fullName}
+        onClose={closeLmsModal}
+      />
 
-        {/* ── Header ── */}
-        <div className="sticky top-0 z-10 bg-[#0A0F1A]/95 backdrop-blur border-b border-white/10 px-6 py-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-white">Application Detail</h2>
-          <button type="button" onClick={onClose} className="text-neutral-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+      <div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex items-center gap-2 text-sm font-semibold text-white/50 hover:text-[#2FA084] transition mb-5"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Intern application
+        </button>
 
-        {loading ? (
-          <div className="flex flex-col items-center justify-center flex-1 gap-3 text-white/40">
-            <Loader2 className="w-6 h-6 animate-spin" />
-            <p className="text-sm">Loading application…</p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'var(--font-display)' }}>
+              Application Detail
+            </h1>
+            <p className="text-sm text-neutral-400 mt-1">{detail.fullName} · {detail.email}</p>
           </div>
-        ) : !detail ? (
-          <div className="flex items-center justify-center flex-1 text-red-400">Failed to load.</div>
-        ) : (
-          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/8 bg-white/[0.02] overflow-hidden">
+        <div className="px-6 py-6 space-y-6">
 
             {/* Notice */}
             {notice && (
@@ -401,7 +537,7 @@ function DetailOverlay({ id, onClose, onRefresh }) {
                 )}
 
                 {/* ── LMS provisioning ── */}
-                {detail.status !== 'rejected' && !detail.lmsProvisioned && !lmsResult && (
+                {detail.status !== 'rejected' && !detail.lmsProvisioned && (
                   <>
                     <button
                       type="button"
@@ -422,35 +558,8 @@ function DetailOverlay({ id, onClose, onRefresh }) {
                   </>
                 )}
 
-                {/* ── Credentials box (shown immediately after provisioning in this session) ── */}
-                {lmsResult && (
-                  <div className="rounded-xl border border-[#2FA084]/30 bg-[#2FA084]/6 p-4 space-y-3">
-                    <p className="text-xs font-bold uppercase tracking-wider text-[#2FA084] flex items-center gap-2">
-                      <KeyRound className="w-3.5 h-3.5" /> LMS Account Created
-                    </p>
-                    <div className="space-y-2.5">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-white/35 mb-0.5">Email / Username</p>
-                        <p className="text-sm text-white font-mono">{lmsResult.email}</p>
-                      </div>
-                      {lmsResult.password && (
-                        <div>
-                          <p className="text-[10px] uppercase tracking-wider text-white/35 mb-1">Temporary Password</p>
-                          <PasswordCell password={lmsResult.password} />
-                        </div>
-                      )}
-                      {lmsResult.existing && (
-                        <p className="text-xs text-neutral-400">This email already had an account — it has been linked.</p>
-                      )}
-                    </div>
-                    <p className="text-xs text-[#2FA084]/70">
-                      Login credentials have been emailed to the student at <strong>{lmsResult.email}</strong>.
-                    </p>
-                  </div>
-                )}
-
-                {/* ── Already provisioned (reloaded from DB — password not stored for security) ── */}
-                {detail.lmsProvisioned && !lmsResult && (
+                {/* ── Already provisioned ── */}
+                {detail.lmsProvisioned && (
                   <div className="rounded-xl border border-blue-500/20 bg-blue-500/6 p-4 flex items-start gap-3">
                     <CheckCircle2 className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
                     <div>
@@ -522,8 +631,7 @@ function DetailOverlay({ id, onClose, onRefresh }) {
               </div>
             </section>
 
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -549,10 +657,14 @@ function StudentCard({ r, onView }) {
             </span>
           </div>
           <p className="text-sm text-neutral-400 truncate">{r.email}{r.phone ? ` · ${r.phone}` : ''}{r.country ? ` · ${r.country}` : ''}</p>
-          {(r.university || r.course) && (
+          {(r.courseSlug || r.course || r.university) && (
             <p className="text-xs text-neutral-500 flex items-center gap-1 mt-1">
-              <Building className="w-3 h-3" />
-              {[r.university, r.course, r.degreeLevel].filter(Boolean).join(' · ')}
+              <GraduationCap className="w-3 h-3" />
+              {[
+                getAcademyCourseTitle(r.courseSlug) || r.course,
+                r.preferredLearningMode,
+                r.educationLevel,
+              ].filter(Boolean).join(' · ')}
             </p>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -592,20 +704,22 @@ function StudentCard({ r, onView }) {
 const FILTER_TABS = ['all', 'pending', 'ready', 'provisioned', 'rejected'];
 
 export default function AdminStudentIntake() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const listPath = `${ADMIN_BASE}/intern-applications`;
+
   const [rows, setRows]           = useState([]);
   const [loading, setLoading]     = useState(true);
   const [dbDown, setDbDown]       = useState(false);
   const [sseOk, setSseOk]         = useState(false);
   const [filter, setFilter]       = useState('all');
-  const [detailId, setDetailId]   = useState(null);
   const retryRef = useRef(null);
-  const pollRef  = useRef(null);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     let retrying = false;
     try {
-      const data = await api.get('/student-registrations');
+      const data = await studentRegistrations.list();
       setDbDown(false);
       setRows(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -625,36 +739,51 @@ export default function AdminStudentIntake() {
   useEffect(() => {
     load();
 
-    const token = auth.getToken();
-    let sseSource;
+    const cleanupSse = studentRegistrations.subscribe((rows) => {
+      setSseOk(true);
+      if (Array.isArray(rows)) {
+        setDbDown(false);
+        setRows(rows);
+        setLoading(false);
+      } else {
+        load(true);
+      }
+    });
 
-    if (token) {
-      sseSource = new EventSource(
-        `/api/student-registrations/stream?token=${encodeURIComponent(token)}`
-      );
-      sseSource.addEventListener('open', () => setSseOk(true));
-      sseSource.onmessage = (e) => {
-        try { if (JSON.parse(e.data).event === 'changed') load(true); } catch { /* ignore */ }
-      };
-      sseSource.onerror = () => setSseOk(false);
-    }
+    const pollId = window.setInterval(() => load(true), 20000);
 
-    pollRef.current = setInterval(() => load(true), 30000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') load(true);
+    };
+    document.addEventListener('visibilitychange', onVis);
 
     return () => {
-      sseSource?.close();
-      clearInterval(pollRef.current);
+      cleanupSse();
+      clearInterval(pollId);
       clearTimeout(retryRef.current);
+      document.removeEventListener('visibilitychange', onVis);
     };
   }, [load]);
 
+  const internRows = useMemo(() => rows.filter(isInternApplication), [rows]);
+
   const counts = FILTER_TABS.reduce((acc, tab) => {
-    acc[tab] = tab === 'all' ? rows.length : rows.filter(r => r.status === tab).length;
+    acc[tab] = tab === 'all' ? internRows.length : internRows.filter((r) => r.status === tab).length;
     return acc;
   }, {});
 
-  const visible = filter === 'all' ? rows : rows.filter(r => r.status === filter);
-  const newCount = rows.filter(r => isNew(r.createdAt)).length;
+  const visible = filter === 'all' ? internRows : internRows.filter((r) => r.status === filter);
+  const newCount = internRows.filter((r) => isNew(r.createdAt)).length;
+
+  if (id) {
+    return (
+      <ApplicationDetail
+        id={id}
+        onClose={() => navigate(listPath)}
+        onRefresh={() => load(true)}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -667,20 +796,11 @@ export default function AdminStudentIntake() {
 
   return (
     <div>
-      {/* Detail overlay */}
-      {detailId && (
-        <DetailOverlay
-          id={detailId}
-          onClose={() => setDetailId(null)}
-          onRefresh={() => load(true)}
-        />
-      )}
-
       {/* ── Header ── */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-            Student Intake
+            Intern application
             {newCount > 0 && (
               <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-[#2FA084] text-[#0A0F1A]">
                 {newCount} new
@@ -688,7 +808,7 @@ export default function AdminStudentIntake() {
             )}
           </h1>
           <p className="text-sm text-neutral-400 mt-1">
-            {rows.length} application{rows.length !== 1 ? 's' : ''}
+            {internRows.length} academy program application{internRows.length !== 1 ? 's' : ''}
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs">
@@ -729,11 +849,11 @@ export default function AdminStudentIntake() {
       {/* ── Application list ── */}
       <div className="space-y-3">
         {visible.map(r => (
-          <StudentCard key={r._id} r={r} onView={id => setDetailId(id)} />
+          <StudentCard key={r._id} r={r} onView={appId => navigate(`${listPath}/${appId}`)} />
         ))}
         {visible.length === 0 && !dbDown && (
           <p className="text-neutral-500 py-10 text-center">
-            {filter === 'all' ? 'No student applications yet.' : `No ${filter} applications.`}
+            {filter === 'all' ? 'No intern applications yet.' : `No ${filter} intern applications.`}
           </p>
         )}
       </div>

@@ -236,17 +236,41 @@ export default function UniversityCourses() {
   const [activeLevel, setActiveLevel] = useState('All');
 
   useEffect(() => {
+    if (!id) return undefined;
     setLoading(true);
-    universitiesApi.get(id)
-      .then(data => { setUni(data); setLoading(false); })
-      .catch(() => { setError('University not found.'); setLoading(false); });
+    setError('');
+
+    const apply = (data) => {
+      if (!data) {
+        setUni(null);
+        setError('University not found.');
+      } else {
+        setUni(data);
+        setError('');
+      }
+      setLoading(false);
+    };
+
+    universitiesApi.get(id).then(apply).catch(() => apply(null));
+
+    const cleanup = universitiesApi.subscribeById(id, apply);
+    return cleanup;
   }, [id]);
 
-  const levels = useMemo(() => {
+  const degreeLevels = useMemo(() => {
     if (!uni?.courses?.length) return [];
-    const s = new Set(uni.courses.map(c => c.level).filter(Boolean));
-    return ['All', ...Array.from(s)];
+    return [...new Set(uni.courses.map((c) => c.level).filter(Boolean))];
   }, [uni]);
+
+  const levels = useMemo(() => {
+    if (!degreeLevels.length) return [];
+    return ['All', ...degreeLevels];
+  }, [degreeLevels]);
+
+  useEffect(() => {
+    if (activeLevel === 'All') return;
+    if (!degreeLevels.includes(activeLevel)) setActiveLevel('All');
+  }, [activeLevel, degreeLevels]);
 
   const displayed = useMemo(() => {
     if (!uni?.courses) return [];
@@ -298,8 +322,8 @@ export default function UniversityCourses() {
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
 
-        {/* Stats strip */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 -mt-6 relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
+        {/* Stats strip — updates live when admin edits the university */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 -mt-6 relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
           {[
             { icon: <Award className="w-5 h-5 text-amber-500" />, label: 'World Ranking', value: uni.ranking || '—' },
             { icon: <CalendarDays className="w-5 h-5 text-blue-500" />, label: 'Founded', value: uni.founded || '—' },
@@ -315,6 +339,26 @@ export default function UniversityCourses() {
             </div>
           ))}
         </div>
+
+        {degreeLevels.length > 0 && (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-6 py-4 mb-10">
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Degree levels offered</p>
+            <div className="flex flex-wrap gap-2">
+              {degreeLevels.map((lvl) => {
+                const meta = levelMeta(lvl);
+                return (
+                  <span
+                    key={lvl}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${meta.colour}`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                    {lvl}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Description + website */}
         {(uni.description || uni.website) && (
@@ -364,7 +408,12 @@ export default function UniversityCourses() {
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
               <AnimatePresence>
                 {displayed.map((course, idx) => (
-                  <CourseCard key={course.name + course.level + idx} course={course} uniName={uni.name} idx={idx} />
+                  <CourseCard
+                    key={`${course.name}-${course.level}-${course.duration || idx}`}
+                    course={course}
+                    uniName={uni.name}
+                    idx={idx}
+                  />
                 ))}
               </AnimatePresence>
             </div>

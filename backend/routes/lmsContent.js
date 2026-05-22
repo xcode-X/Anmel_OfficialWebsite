@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { body, validationResult } from 'express-validator';
 import LmsContent from '../models/LmsContent.js';
 import { authMiddleware, adminOnly, optionalAuth } from '../middleware/auth.js';
-import { isDbConnected } from '../lib/dbReady.js';
+import { isDbConnected, withDbQuery } from '../lib/dbReady.js';
+import { bumpRealtime } from '../lib/firestoreDb.js';
 
 const router = Router();
 const listeners = new Set();
@@ -13,6 +14,7 @@ function slugify(s) {
 }
 
 function publishChange() {
+  bumpRealtime('lms-content');
   const payload = JSON.stringify({ event: 'changed', ts: Date.now() });
   for (const client of listeners) {
     client.write(`data: ${payload}\n\n`);
@@ -90,17 +92,26 @@ router.get('/stream', (req, res) => {
 });
 
 router.get('/', optionalAuth, async (req, res) => {
-  if (!isDbConnected()) return res.json([]);
-  const due = await LmsContent.find({
-    published: false,
-    scheduledPublishAt: { $ne: null, $lte: new Date() },
-  }).select('_id').lean();
-  for (const item of due) {
-    await publishIfDue(item._id);
+  // Run due publishes in the background — never block the list response
+  if (isDbConnected()) {
+    withDbQuery(
+      () => LmsContent.find({
+        published: false,
+        scheduledPublishAt: { $ne: null, $lte: new Date() },
+      }).select('_id').maxTimeMS(3000).lean(),
+      { fallback: [], label: 'lms due publish', timeoutMs: 3000 }
+    ).then((due) => {
+      for (const item of due || []) {
+        publishIfDue(item._id).catch(() => {});
+      }
+    }).catch(() => {});
   }
 
   const q = req.userId || req.query.published === 'false' ? {} : { published: true };
-  const items = await LmsContent.find(q).sort({ publishedAt: -1, createdAt: -1 }).lean();
+  const items = await withDbQuery(
+    () => LmsContent.find(q).sort({ publishedAt: -1, createdAt: -1 }).maxTimeMS(8000).lean(),
+    { fallback: [], label: 'lms-content list' }
+  );
   res.json(items);
 });
 

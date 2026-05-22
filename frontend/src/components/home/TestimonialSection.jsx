@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { testimonialsApi } from '../../lib/api';
 import RemoteImage from '../ui/RemoteImage';
@@ -19,6 +19,11 @@ export default function TestimonialSection() {
     testimonialsApi.list()
       .then((d) => { setTestimonials(Array.isArray(d) ? d : []); setLoaded(true); })
       .catch(() => { setTestimonials([]); setLoaded(true); });
+    const cleanup = testimonialsApi.subscribe((rows) => {
+      setTestimonials(rows);
+      setLoaded(true);
+    });
+    return cleanup;
   }, []);
 
   if (!loaded || testimonials.length === 0) return null;

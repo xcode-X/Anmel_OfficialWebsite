@@ -1,27 +1,33 @@
 import { Router } from 'express';
 import { registerContentStreamClient } from '../lib/contentStreamHub.js';
+import { initSseResponse, writeSseEvent, writeSseComment } from '../lib/sse.js';
+import { logError } from '../lib/logger.js';
 
 const router = Router();
 
 router.get('/stream', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+  try {
+    initSseResponse(res);
+    registerContentStreamClient(res);
+    writeSseEvent(res, { resource: 'connected', ts: Date.now() });
 
-  registerContentStreamClient(res);
-  res.write(`data: ${JSON.stringify({ resource: 'connected', ts: Date.now() })}\n\n`);
+    const keepAlive = setInterval(() => {
+      if (!writeSseComment(res)) clearInterval(keepAlive);
+    }, 25000);
 
-  const keepAlive = setInterval(() => {
-    try {
-      res.write(': ping\n\n');
-    } catch {
-      clearInterval(keepAlive);
+    req.on('close', () => clearInterval(keepAlive));
+    req.on('aborted', () => clearInterval(keepAlive));
+  } catch (err) {
+    logError('content/stream', err);
+    if (!res.headersSent) {
+      return res.status(503).json({ error: 'Content stream unavailable' });
     }
-  }, 25000);
-
-  req.on('close', () => clearInterval(keepAlive));
+    try {
+      res.end();
+    } catch {
+      /* ignore */
+    }
+  }
 });
 
 export default router;

@@ -1,349 +1,447 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowRight, CheckCircle2, ChevronRight, Sparkles, ShieldCheck, Users, Rocket, Headphones, LayoutGrid, Shield, Search, Code } from 'lucide-react';
-import api from '../lib/api';
-import { deferIdle } from '../lib/deferIdle';
-import { subscribeContentStream } from '../lib/contentStream';
-import { defaultServices } from '../lib/servicesData';
-import { servicesHeroImage, getServiceNavPreviewImage } from '../lib/siteImages';
+import {
+  ArrowRight, CheckCircle2, ChevronRight, ShieldCheck, Users, Rocket,
+  Headphones, LayoutGrid, Shield, Lock, FileCheck, Cloud, Activity,
+  GraduationCap, MapPin, Clock, Award,
+} from 'lucide-react';
+import { getServices, getServiceBySlug } from '../lib/servicesData';
+import { servicesHeroImage, capabilityImages } from '../lib/siteImages';
 import RemoteImage from '../components/ui/RemoteImage';
+import MotionLink from '../components/ui/MotionLink';
+const viewport = { once: true, margin: '-60px' };
 
-/** Merge API payload with static defaults so detail pages always show full methodology & features when the DB row is partial. */
-function mergeServiceDetail(apiData, slug) {
-  const def = defaultServices.find((s) => s.slug === slug);
-  if (!def) return apiData;
-  return {
-    ...def,
-    ...apiData,
-    title: apiData.title || def.title,
-    shortDescription: (apiData.shortDescription && String(apiData.shortDescription).trim()) || def.shortDescription,
-    description: (apiData.description && String(apiData.description).trim()) || def.description,
-    outcomes:
-      (apiData.outcomes && String(apiData.outcomes).trim()) || def.outcomes,
-    features: Array.isArray(apiData.features) && apiData.features.length > 0 ? apiData.features : def.features,
-    process: Array.isArray(apiData.process) && apiData.process.length > 0 ? apiData.process : def.process,
-  };
+const iconMap = {
+  'security-assessment': Shield,
+  'secure-development': Lock,
+  compliance: FileCheck,
+  monitoring: Activity,
+  'cloud-security': Cloud,
+  training: GraduationCap,
+};
+
+const consultantStats = [
+  { value: '150+', label: 'Assessments delivered' },
+  { value: '40+', label: 'Enterprise clients' },
+  { value: '4+', label: 'Years consulting' },
+  { value: '24h', label: 'Typical response' },
+];
+
+const trustPoints = [
+  { icon: Shield, title: 'Security first', desc: 'Offensive testing meets practical remediation—not slide decks.' },
+  { icon: Users, title: 'Senior consultants', desc: 'You work with the people who run the assessment, not account layers.' },
+  { icon: Rocket, title: 'Actionable output', desc: 'Prioritized findings your team can fix this sprint.' },
+  { icon: Headphones, title: 'Ongoing support', desc: 'We stay through verification and retesting when you need us.' },
+];
+
+function ServiceOverviewCard({ service, idx, Icon }) {
+  return (
+    <motion.a
+      href={`#${service.slug}`}
+      initial={{ opacity: 0, y: 28 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={viewport}
+      transition={{ delay: idx * 0.06, type: 'spring', stiffness: 90, damping: 18 }}
+      whileHover={{ y: -6 }}
+      className="group flex flex-col h-full rounded-2xl overflow-hidden bg-white border border-stone-200/80 shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-hover)] hover:border-stone-300/80 transition-all duration-300"
+    >
+      {/* Image */}
+      <div className="relative h-44 sm:h-48 overflow-hidden">
+        <RemoteImage
+          src={service.image}
+          alt={service.title}
+          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+          fallbackSeed={`svc-card-${service.slug}`}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-stone-900/55 via-stone-900/10 to-transparent" />
+        <div
+          className="absolute top-0 left-0 right-0 h-1"
+          style={{ background: `linear-gradient(90deg, ${service.color}, ${service.color}66)` }}
+        />
+        <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/95 backdrop-blur-sm shadow-sm">
+          <span
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-white"
+            style={{ background: `linear-gradient(145deg, ${service.color}, ${service.color}cc)` }}
+          >
+            <Icon className="w-3.5 h-3.5" strokeWidth={2} />
+          </span>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600">
+            {String(idx + 1).padStart(2, '0')}
+          </span>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex flex-col flex-1 p-6">
+        <h3
+          className="text-lg font-bold text-stone-900 group-hover:text-stone-800 transition-colors"
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
+          {service.title}
+        </h3>
+        <p className="mt-2.5 text-sm text-stone-600 leading-relaxed line-clamp-2">
+          {service.shortDescription}
+        </p>
+
+        {service.features?.length > 0 && (
+          <ul className="mt-4 space-y-2 flex-1">
+            {service.features.slice(0, 3).map((f) => (
+              <li key={f} className="flex items-start gap-2 text-xs text-stone-700 leading-snug">
+                <span
+                  className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: service.color }}
+                />
+                <span className="line-clamp-1">{f.split('(')[0].trim()}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="mt-5 pt-4 border-t border-stone-100 flex items-center justify-between">
+          <span className="text-sm font-semibold text-stone-800 group-hover:text-stone-900 transition-colors">
+            View details
+          </span>
+          <span
+            className="flex h-8 w-8 items-center justify-center rounded-full text-white transition-transform duration-300 group-hover:translate-x-0.5"
+            style={{ backgroundColor: service.color }}
+          >
+            <ArrowRight className="w-3.5 h-3.5" strokeWidth={2.5} />
+          </span>
+        </div>
+      </div>
+
+      <div
+        className="h-[3px] origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500"
+        style={{ background: `linear-gradient(90deg, ${service.color}, ${service.color}44)` }}
+      />
+    </motion.a>
+  );
 }
 
-const defaultServicesList = defaultServices;
+function SectionHeading({ label, title, labelClass = 'text-purple', titleClass = 'text-stone-900', center = false }) {
+  return (
+    <div className={center ? 'text-center' : ''}>
+      <span className={`inline-block whitespace-nowrap text-xs font-bold uppercase tracking-[0.22em] ${labelClass}`}>{label}</span>
+      <h2 className={`mt-3 text-2xl sm:text-3xl lg:text-4xl font-bold whitespace-nowrap ${titleClass}`} style={{ fontFamily: 'var(--font-display)' }}>
+        {title}
+      </h2>
+    </div>
+  );
+}
 
 export default function Services() {
   const navigate = useNavigate();
   const [websiteUrl, setWebsiteUrl] = useState('');
-  const [services, setServices] = useState(defaultServicesList);
+  const services = useMemo(() => getServices(), []);
 
   const handleSecurityCheck = (e) => {
     e.preventDefault();
     if (!websiteUrl.trim()) return;
-    
     let targetUrl = websiteUrl.trim();
-    if (!/^https?:\/\//i.test(targetUrl)) {
-      targetUrl = 'https://' + targetUrl;
-    }
+    if (!/^https?:\/\//i.test(targetUrl)) targetUrl = 'https://' + targetUrl;
     navigate(`/application-security-checker?url=${encodeURIComponent(targetUrl)}`);
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    const cancel = deferIdle(() => {
-      if (cancelled) return;
-      api.get('/services').then((d) => { if (!cancelled) setServices(d); }).catch(() => { });
-    }, 400);
-    return () => {
-      cancelled = true;
-      cancel();
-    };
-  }, []);
-
-  useEffect(() => {
-    return subscribeContentStream((resource) => {
-      if (resource !== 'services') return;
-      api.get('/services').then(setServices).catch(() => {});
-    });
-  }, []);
-
   return (
     <div className="bg-white min-h-screen">
-      {/* 1. Hero Section */}
-      <section className="relative pt-28 pb-16 lg:pt-32 lg:pb-24 overflow-hidden grid-bg">
-        {/* Subtle bottom dark fade gradient for smooth fold transition */}
-        <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-stone-50 to-transparent pointer-events-none" />
+      {/* ── Hero ── */}
+      <section className="relative pt-28 pb-16 lg:pt-32 lg:pb-20 overflow-hidden bg-[#0A0C14] text-white">
+        <div className="absolute inset-0 pointer-events-none" aria-hidden>
+          <div className="absolute top-0 right-0 w-[50%] h-full bg-gradient-to-l from-[#5D1C6A]/25 to-transparent" />
+          <div
+            className="absolute inset-0 opacity-[0.04]"
+            style={{
+              backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
+              backgroundSize: '44px 44px',
+            }}
+          />
+        </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
-            
-            {/* ── Left Column: Copy & Interactive Checker ── */}
-            <div className="max-w-2xl flex flex-col justify-center">
-              
-              {/* Badge */}
-              <motion.div
-                initial={{ opacity: 0, y: -12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="inline-flex items-center self-start gap-2 bg-[#5D1C6A]/10 border border-[#5D1C6A]/20 text-purple px-4 py-1.5 rounded-full text-xs font-semibold tracking-wider shadow-sm mb-6"
-              >
-                <Shield className="w-3.5 h-3.5" />
-                <span>Trusted Technology Partner in Liberia</span>
-              </motion.div>
-
-              {/* Typography Heading exactly matching the mockup */}
-              <motion.h1
-                initial={{ opacity: 0, y: 24 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55, delay: 0.08 }}
-                className="text-4xl sm:text-5xl lg:text-[54px] font-bold text-stone-900 leading-[1.12] tracking-tight"
-                style={{ fontFamily: 'var(--font-display)' }}
-              >
-                Securing <span className="text-purple">Digital</span> Assets.
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="grid lg:grid-cols-2 gap-14 items-center">
+            <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55 }}>
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-semibold tracking-wide text-[#3CD1AD] mb-6 whitespace-nowrap">
+                <Shield className="w-3.5 h-3.5" strokeWidth={2.2} />
+                Security Consultant · Monrovia & remote
+              </div>
+              <h1 className="text-4xl sm:text-5xl lg:text-[3.1rem] font-bold leading-[1.1] tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
+                Securing digital assets.
                 <br />
-                <span className="text-purple">Delivering</span> Trusted Solutions.
-              </motion.h1>
-
-              {/* Subtitle Description */}
-              <motion.p
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.45, delay: 0.16 }}
-                className="mt-6 text-base sm:text-lg text-stone-600 leading-relaxed max-w-xl"
-              >
-                Expert cybersecurity consulting, digital forensics investigations, and modern web development solutions for enterprises and organizations.
-              </motion.p>
-
-              {/* CTA Buttons - Pill Shaped */}
-              <motion.div
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.24 }}
-                className="mt-8 flex flex-wrap gap-4"
-              >
-                <Link
+                <span className="text-[#A78BFA]">Delivering</span>{' '}
+                <span className="text-[#3CD1AD]">trusted solutions.</span>
+              </h1>
+              <p className="mt-6 text-lg text-stone-300 leading-relaxed max-w-lg">
+                Expert cybersecurity consulting, digital forensics, and secure engineering for enterprises and organizations across West Africa and beyond.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-4">
+                <MotionLink
                   to="/contact"
-                  className="inline-flex items-center justify-center gap-2 bg-purple hover:bg-purple-light text-white px-7 py-3.5 rounded-full font-bold text-sm sm:text-base shadow-lg shadow-purple/10 hover:shadow-purple/20 transition-all duration-200"
+                  whileHover={{ scale: 1.02, y: -2 }}
+                  className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full bg-[#F59E0B] text-stone-900 font-bold hover:bg-[#FBBF24] transition-colors shadow-lg shadow-orange-900/30"
                 >
-                  <span>Request Consultant</span>
-                  <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" strokeWidth={2.2} />
-                </Link>
-                
+                  Request consultant
+                  <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
+                </MotionLink>
                 <a
                   href="#services-list"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    document.getElementById('services-list')?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="inline-flex items-center justify-center gap-2 border border-stone-300 hover:border-stone-400 bg-white/50 text-stone-700 px-7 py-3.5 rounded-full font-bold text-sm sm:text-base hover:bg-white transition-all duration-200"
+                  onClick={(e) => { e.preventDefault(); document.getElementById('services-list')?.scrollIntoView({ behavior: 'smooth' }); }}
+                  className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full border border-white/25 font-semibold hover:bg-white/5 transition-colors"
                 >
-                  <span>Our Services</span>
-                  <LayoutGrid className="w-4 h-4 text-stone-500" strokeWidth={2.2} />
+                  Our services
+                  <LayoutGrid className="w-4 h-4" />
                 </a>
-              </motion.div>
+              </div>
 
-              {/* ── Live Interactive Security Widget ── */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.32 }}
-                className="mt-10 border-t border-stone-200 pt-8 max-w-md"
-              >
-                <h3 className="text-sm font-bold text-stone-900 flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-purple" />
-                  Live Web Site Status Check
-                </h3>
-                <p className="text-xs text-stone-500 mt-1 mb-4 leading-relaxed">
-                  Ensure your website is secure, fast, and always online. Input your URL to check the vulnerability status.
+              <form onSubmit={handleSecurityCheck} className="mt-10 max-w-md">
+                <p className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#3CD1AD]" />
+                  Quick site check
                 </p>
-                
-                <form onSubmit={handleSecurityCheck} className="flex gap-2">
+                <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="Enter Your Website URL"
+                    placeholder="yourcompany.com"
                     value={websiteUrl}
                     onChange={(e) => setWebsiteUrl(e.target.value)}
-                    className="flex-1 min-w-0 bg-stone-100 hover:bg-stone-50 focus:bg-white text-stone-800 text-xs px-4 py-3 rounded-xl border border-stone-200 focus:border-purple focus:outline-none transition-all duration-200 placeholder:text-stone-400"
+                    className="flex-1 min-w-0 bg-white/10 border border-white/15 text-white text-sm px-4 py-3 rounded-xl focus:border-[#3CD1AD] focus:outline-none placeholder:text-stone-500"
                   />
-                  <button
-                    type="submit"
-                    className="bg-stone-950 hover:bg-black text-white text-xs font-bold px-5 py-3 rounded-xl shadow-md transition-all duration-200 shrink-0"
-                  >
-                    Check Status
+                  <button type="submit" className="bg-white text-stone-900 text-sm font-bold px-5 py-3 rounded-xl hover:bg-stone-100 transition shrink-0">
+                    Check
                   </button>
-                </form>
-              </motion.div>
+                </div>
+              </form>
+            </motion.div>
 
-            </div>
-
-            {/* ── Right Column: Interactive Overlay Collage ── */}
-            <div className="relative flex items-center justify-center min-h-[500px] lg:min-h-[580px] mt-10 lg:mt-0 select-none">
-              
-              {/* Solid Purple Circle Backdrop */}
+            {/* Creative hero visual */}
+            <motion.div
+              initial={{ opacity: 0, x: 32 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6, delay: 0.15 }}
+              className="relative h-[380px] sm:h-[440px] lg:h-[480px]"
+            >
               <motion.div
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: 'spring', stiffness: 50, damping: 15, delay: 0.2 }}
-                className="absolute w-[280px] h-[280px] sm:w-[360px] sm:h-[360px] rounded-full bg-purple z-0 shadow-lg shadow-purple/10"
+                aria-hidden
+                className="absolute inset-6 rounded-[2rem] border border-dashed border-white/15"
+                animate={{ rotate: [0, 3, -3, 0] }}
+                transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
               />
-
-              {/* Armchair Consultant Cutout - Clean, high resolution */}
               <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 24 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={{ type: 'spring', stiffness: 45, damping: 15, delay: 0.35 }}
-                className="relative z-10 w-full max-w-[430px] drop-shadow-[0_20px_50px_rgba(93,28,106,0.15)] pb-12 pointer-events-none"
+                className="absolute inset-x-6 top-6 bottom-20 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10"
+                style={{ clipPath: 'polygon(0 0, 100% 4%, 100% 100%, 0 96%)' }}
+                animate={{ y: [0, -8, 0] }}
+                transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
               >
-                <img
-                  src="/armchair_consultant.png"
-                  alt="Anmel Inc Security Expert"
-                  className="w-full h-auto object-contain pointer-events-none"
-                />
+                <RemoteImage src={servicesHeroImage} alt="Security operations workspace" className="w-full h-full object-cover" loading="eager" fallbackSeed="svc-hero-main" />
+                <div className="absolute inset-0 bg-gradient-to-tr from-[#0A0C14]/75 via-[#5D1C6A]/20 to-transparent" />
               </motion.div>
-
-              {/* 3D Floating Shield Badge */}
               <motion.div
-                initial={{ scale: 0, rotate: -30 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: 'spring', stiffness: 60, delay: 0.6 }}
-                className="absolute bottom-24 right-10 lg:-right-4 w-16 h-16 rounded-full bg-purple text-white flex items-center justify-center shadow-2xl border-4 border-white z-20"
+                className="absolute bottom-12 left-0 w-[48%] rounded-xl overflow-hidden shadow-2xl ring-4 ring-[#0A0C14]"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                whileHover={{ scale: 1.04, y: -4 }}
               >
-                <Shield className="w-6 h-6 fill-white/10" strokeWidth={2} />
+                <RemoteImage src={capabilityImages.pentest} alt="Penetration testing" className="w-full aspect-[4/3] object-cover" fallbackSeed="svc-hero-accent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-stone-900/50 to-transparent" />
               </motion.div>
-
-              {/* Layered Checklist Card (Overlapping in the middle) */}
               <motion.div
-                initial={{ opacity: 0, x: -30 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ type: 'spring', stiffness: 40, delay: 0.5 }}
-                className="absolute left-0 lg:-left-12 top-1/2 -translate-y-1/2 bg-white/95 backdrop-blur-xl border border-stone-200/90 rounded-3xl p-5 w-[240px] sm:w-[260px] shadow-2xl shadow-stone-900/10 z-20 flex flex-col gap-4"
+                className="absolute top-4 right-2 px-4 py-2.5 rounded-xl bg-white/95 backdrop-blur shadow-xl text-stone-900"
+                animate={{ y: [0, -6, 0] }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
               >
-                {[
-                  { icon: Shield, title: "Cybersecurity", desc: "Protect. Detect. Respond.", color: "text-[#5D1C6A] bg-[#5D1C6A]/10" },
-                  { icon: Search, title: "Digital Forensics", desc: "Investigate. Analyze. Resolve.", color: "text-purple bg-purple/10" },
-                  { icon: Code, title: "Web Development", desc: "Build. Optimize. Scale.", color: "text-sky bg-sky/10" }
-                ].map((item) => (
-                  <div key={item.title} className="flex items-start gap-3 group">
-                    <div className={`w-8 h-8 rounded-lg ${item.color} flex items-center justify-center shrink-0`}>
-                      <item.icon className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-stone-900 leading-none">{item.title}</h4>
-                      <p className="text-[10px] text-stone-500 mt-1 leading-none">{item.desc}</p>
-                    </div>
-                  </div>
-                ))}
+                <p className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Certified</p>
+                <p className="text-sm font-bold">OWASP · ISO aligned</p>
               </motion.div>
-
-            </div>
-
+              <motion.div
+                className="absolute bottom-0 right-4 px-5 py-3 rounded-2xl bg-[#5D1C6A] shadow-xl ring-1 ring-white/10"
+                whileHover={{ scale: 1.05 }}
+              >
+                <p className="text-2xl font-bold text-white tabular-nums" style={{ fontFamily: 'var(--font-display)' }}>98%</p>
+                <p className="text-[10px] uppercase tracking-wider text-white/70">Client retention</p>
+              </motion.div>
+              <motion.div
+                aria-hidden
+                className="absolute top-1/3 right-8 w-14 h-14 rounded-2xl bg-[#2FA084]/90 flex items-center justify-center shadow-lg"
+                animate={{ rotate: [0, 8, -8, 0] }}
+                transition={{ duration: 6, repeat: Infinity }}
+              >
+                <Shield className="w-7 h-7 text-white" strokeWidth={2} />
+              </motion.div>
+            </motion.div>
           </div>
+        </div>
+        <div className="h-1 w-full bg-gradient-to-r from-[#2FA084] via-[#5D1C6A] to-[#F59E0B]" aria-hidden />
+      </section>
 
-          {/* ── Bottom Bar: Modern Horizontal Features Box ── */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-            className="mt-16 bg-white border border-stone-200/80 rounded-3xl p-6 sm:p-8 shadow-xl shadow-stone-100/50 grid sm:grid-cols-2 lg:grid-cols-4 gap-6 relative z-20"
-          >
-            {[
-              { icon: Shield, title: "Security First", desc: "Advanced protection for your critical assets." },
-              { icon: Users, title: "Expert Team", desc: "Certified professionals with proven experience." },
-              { icon: Rocket, title: "Modern Solutions", desc: "Scalable and innovative technology for growth." },
-              { icon: Headphones, title: "Reliable Support", desc: "We're here to support your success." }
-            ].map((feat) => (
-              <div key={feat.title} className="flex items-start gap-3 hover:-translate-y-1 transition-transform duration-200">
-                <div className="w-10 h-10 rounded-xl bg-purple/10 flex items-center justify-center text-purple shrink-0">
-                  <feat.icon className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-stone-900">{feat.title}</h4>
-                  <p className="text-xs text-stone-500 mt-1 leading-relaxed">{feat.desc}</p>
-                </div>
-              </div>
-            ))}
-          </motion.div>
+      {/* Stats */}
+      <section className="py-12 bg-stone-900 border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-2 lg:grid-cols-4 gap-8">
+          {consultantStats.map((s, i) => (
+            <motion.div key={s.label} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={viewport} transition={{ delay: i * 0.08 }}>
+              <p className="text-3xl sm:text-4xl font-bold text-white tabular-nums" style={{ fontFamily: 'var(--font-display)' }}>{s.value}</p>
+              <p className="mt-1 text-sm text-stone-400">{s.label}</p>
+            </motion.div>
+          ))}
         </div>
       </section>
 
-      {/* Services List Anchor */}
-      <div id="services-list" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {services.map((s) => (
-          <motion.section
-            key={s.slug}
-            id={s.slug}
-            initial={{ opacity: 0, y: 32 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-80px' }}
-            className="py-[var(--spacing-block)] border-b border-stone-200 last:border-0"
-          >
-            <div className="grid lg:grid-cols-2 gap-12 items-start">
-              <div>
-                <span className="text-[#0EA5E9] text-sm font-semibold uppercase tracking-wider">Service</span>
-                <h2 className="mt-2 text-3xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-display)' }}>
-                  {s.title}
-                </h2>
-                <p className="mt-4 text-stone-600 leading-relaxed">{s.description || s.shortDescription}</p>
+      {/* Service overview grid */}
+      <section className="py-[var(--spacing-section)] bg-white" id="services-list">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <SectionHeading label="Our services" title="Six ways we help you reduce real risk." labelClass="text-[#2FA084]" center />
+          <p className="mt-4 text-center text-stone-600 max-w-2xl mx-auto text-sm leading-relaxed">
+            Every engagement is senior-led. Pick a starting point—or combine services into a program.
+          </p>
+          <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {services.map((s, idx) => {
+              const Icon = iconMap[s.slug] || Shield;
+              return (
+                <ServiceOverviewCard key={s.slug} service={s} idx={idx} Icon={Icon} />
+              );
+            })}
+          </div>
+        </div>
+      </section>
 
-                <div className="mt-8">
-                  <h3 className="text-sm font-bold text-stone-900 uppercase tracking-widest mb-3">Target Outcomes</h3>
-                  <div className="bg-[#E0F2FE]/40 border-l-4 border-[#0EA5E9] p-4 rounded-r-xl">
-                    <p className="text-stone-700 italic text-[15px]">{s.outcomes || 'Defined, sustainable security controls and risk reduction.'}</p>
+      {/* Detailed service sections */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {services.map((s, idx) => {
+          const Icon = iconMap[s.slug] || Shield;
+          const flip = idx % 2 === 1;
+          return (
+            <motion.section
+              key={s.slug}
+              id={s.slug}
+              initial={{ opacity: 0, y: 32 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={viewport}
+              className="py-[var(--spacing-block)] border-b border-stone-200 last:border-0 scroll-mt-28"
+            >
+              <div className={`grid lg:grid-cols-2 gap-12 items-start ${flip ? 'lg:direction-rtl' : ''}`}>
+                <div className={flip ? 'lg:order-2' : ''}>
+                  <span className="inline-block whitespace-nowrap text-xs font-bold uppercase tracking-[0.2em]" style={{ color: s.color }}>Service</span>
+                  <h2 className="mt-2 text-3xl font-bold text-stone-900 whitespace-nowrap" style={{ fontFamily: 'var(--font-display)' }}>{s.title}</h2>
+                  <p className="mt-4 text-stone-600 leading-relaxed">{s.description}</p>
+                  {s.idealFor && (
+                    <p className="mt-4 text-sm text-stone-500 italic border-l-2 pl-4" style={{ borderColor: s.color }}>
+                      Ideal for: {s.idealFor}
+                    </p>
+                  )}
+                  <div className="mt-6 rounded-xl border border-stone-200/80 bg-stone-50 p-5">
+                    <p className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">Target outcome</p>
+                    <p className="text-stone-700 text-sm leading-relaxed">{s.outcomes}</p>
                   </div>
-                </div>
-
-                {s.features?.length > 0 && (
-                  <div className="mt-8">
-                    <h3 className="text-sm font-bold text-stone-900 uppercase tracking-widest mb-4">What's Included</h3>
-                    <ul className="grid sm:grid-cols-2 gap-3">
-                      {s.features.map((f, i) => (
-                        <li key={i} className="flex items-start gap-2 text-stone-600 text-[15px]">
-                          <span className="text-[#7C3AED] font-bold mt-0.5">✓</span>
-                          <span>{f}</span>
+                  {s.features?.length > 0 && (
+                    <ul className="mt-6 grid sm:grid-cols-2 gap-2">
+                      {s.features.map((f) => (
+                        <li key={f} className="flex items-start gap-2 text-sm text-stone-700">
+                          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" style={{ color: s.color }} strokeWidth={2} />
+                          {f}
                         </li>
                       ))}
                     </ul>
+                  )}
+                  <div className="mt-8 flex flex-wrap gap-3">
+                    <Link to={`/services/${s.slug}`} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-bold transition-colors" style={{ backgroundColor: s.color }}>
+                      Full service page <ArrowRight className="w-4 h-4" />
+                    </Link>
+                    <Link to="/contact" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-stone-300 text-stone-700 text-sm font-semibold hover:bg-stone-50 transition">
+                      Inquire
+                    </Link>
                   </div>
-                )}
-
-                <div className="mt-10">
-                  <Link to="/contact" className="inline-flex items-center gap-2 text-[#F97316] font-bold hover:gap-3 transition-all underline decoration-2 underline-offset-4">
-                    Inquire about this service
-                    <ArrowRight className="w-4 h-4" />
-                  </Link>
+                </div>
+                <div className={`space-y-6 ${flip ? 'lg:order-1' : ''}`}>
+                  <div className="relative rounded-2xl overflow-hidden aspect-[16/10] shadow-[var(--shadow-card)] ring-1 ring-stone-200/80 group">
+                    <RemoteImage
+                      src={s.image}
+                      alt={s.title}
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+                      fallbackSeed={`svc-detail-${s.slug}`}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-stone-900/40 to-transparent" />
+                    <div
+                      className="absolute bottom-4 left-4 flex items-center gap-2.5 rounded-xl px-3 py-2 bg-white/95 backdrop-blur-sm shadow-md"
+                    >
+                      <span
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-white"
+                        style={{ backgroundColor: s.color }}
+                      >
+                        <Icon className="w-4 h-4" strokeWidth={2} />
+                      </span>
+                      <span className="text-sm font-semibold text-stone-800">{s.title}</span>
+                    </div>
+                  </div>
+                  {s.process?.length > 0 && (
+                    <div className="rounded-2xl border border-stone-200/80 bg-white p-6 shadow-[var(--shadow-card)]">
+                      <h3 className="font-bold text-stone-900 mb-5 flex items-center gap-2 whitespace-nowrap">
+                        <Icon className="w-5 h-5" style={{ color: s.color }} strokeWidth={1.75} />
+                        Methodology
+                      </h3>
+                      <div className="space-y-4 relative">
+                        <div className="absolute left-[15px] top-2 bottom-2 w-0.5 bg-stone-100" aria-hidden />
+                        {s.process.map((p) => (
+                          <div key={p.step} className="flex gap-4 relative">
+                            <span className="w-8 h-8 rounded-lg text-white text-xs font-bold flex items-center justify-center shrink-0 z-10" style={{ backgroundColor: s.color }}>{p.step}</span>
+                            <div>
+                              <span className="font-semibold text-stone-900 text-sm">{p.title}</span>
+                              <p className="text-xs text-stone-500 mt-0.5 leading-relaxed">{p.description}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {s.process?.length > 0 && (
-                <div className="bg-white rounded-2xl p-8 border border-stone-200/80 shadow-[var(--shadow-card)] sticky top-32">
-                  <h3 className="font-bold text-stone-900 mb-6 text-lg" style={{ fontFamily: 'var(--font-display)' }}>Methodology</h3>
-                  <div className="space-y-6 relative">
-                    <div className="absolute left-[17px] top-2 bottom-2 w-0.5 bg-stone-100" />
-                    {s.process.map((p) => (
-                      <div key={p.step} className="flex gap-4 relative z-10">
-                        <span className="w-9 h-9 rounded-full bg-stone-900 text-white font-bold flex items-center justify-center text-xs shrink-0">{p.step}</span>
-                        <div>
-                          <span className="font-bold text-stone-900 block">{p.title}</span>
-                          <p className="text-sm text-stone-500 mt-1 leading-relaxed">{p.description}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </motion.section>
-        ))}
+            </motion.section>
+          );
+        })}
       </div>
 
-      <section className="py-[var(--spacing-section)] bg-stone-100 relative overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-40 rounded-b-[50%] bg-[#EDE9FE] opacity-40" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          <h2 className="text-2xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-display)' }}>
+      {/* Why choose us */}
+      <section className="py-[var(--spacing-section)] bg-[#0A0C14] text-white relative overflow-hidden">
+        <motion.div aria-hidden className="absolute -bottom-32 -left-32 w-96 h-96 rounded-full bg-[#5D1C6A]/20 blur-3xl" animate={{ opacity: [0.3, 0.6, 0.3] }} transition={{ duration: 10, repeat: Infinity }} />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <SectionHeading label="Why Anmel" title="Consulting that ships outcomes—not anxiety." labelClass="text-[#3CD1AD]" titleClass="text-white" center />
+          <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {trustPoints.map((t, i) => (
+              <motion.div
+                key={t.title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={viewport}
+                transition={{ delay: i * 0.08 }}
+                whileHover={{ y: -4 }}
+                className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm"
+              >
+                <div className="w-11 h-11 rounded-xl bg-[#2FA084]/20 flex items-center justify-center text-[#3CD1AD] mb-4">
+                  <t.icon className="w-5 h-5" strokeWidth={1.75} />
+                </div>
+                <h3 className="font-bold text-white whitespace-nowrap">{t.title}</h3>
+                <p className="mt-2 text-sm text-stone-400 leading-relaxed">{t.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+          <div className="mt-10 flex flex-wrap justify-center gap-6 text-sm text-stone-400">
+            <span className="flex items-center gap-2"><MapPin className="w-4 h-4 text-[#3CD1AD]" /> Monrovia, Liberia</span>
+            <span className="flex items-center gap-2"><Clock className="w-4 h-4 text-[#3CD1AD]" /> Response within 24h</span>
+            <span className="flex items-center gap-2"><Award className="w-4 h-4 text-[#3CD1AD]" /> Senior-led engagements</span>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="py-[var(--spacing-section)] bg-stone-50 relative overflow-hidden">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-40 rounded-b-[50%] bg-purple-pale opacity-50 pointer-events-none" aria-hidden />
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+          <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 whitespace-nowrap" style={{ fontFamily: 'var(--font-display)' }}>
             Ready to strengthen your security?
           </h2>
-          <p className="mt-3 text-stone-600 max-w-md mx-auto">Tell us about your environment and goals. We’ll recommend the right starting point.</p>
-          <Link
-            to="/contact"
-            className="mt-6 inline-flex items-center gap-2 px-8 py-4 rounded-[var(--radius-button)] bg-[#F97316] text-white font-semibold shadow-lg shadow-orange-200/50 hover:bg-[#EA580C] transition"
-          >
+          <p className="mt-4 text-stone-600">Tell us about your environment. We will recommend the right starting point—no obligation.</p>
+          <Link to="/contact" className="mt-8 inline-flex items-center gap-2 px-8 py-4 rounded-full bg-[#F59E0B] text-stone-900 font-bold hover:bg-[#FBBF24] transition shadow-lg">
             Get a consultation
+            <ArrowRight className="w-5 h-5" />
           </Link>
         </div>
       </section>
@@ -352,149 +450,61 @@ export default function Services() {
 }
 
 function ServiceDetailBody({ slug }) {
-  const [item, setItem] = useState(null);
-  const [notFound, setNotFound] = useState(false);
-
-  useEffect(() => {
-    if (!slug) return;
-    let cancelled = false;
-    api
-      .get(`/services/${slug}`)
-      .then((data) => {
-        if (cancelled) return;
-        setItem(mergeServiceDetail(data, slug));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        const found = defaultServices.find((s) => s.slug === slug);
-        if (found) setItem(found);
-        else {
-          setItem(null);
-          setNotFound(true);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [slug]);
-
-  useEffect(() => {
-    return subscribeContentStream((resource) => {
-      if (resource !== 'services' || !slug) return;
-      api
-        .get(`/services/${slug}`)
-        .then((data) => setItem(mergeServiceDetail(data, slug)))
-        .catch(() => {});
-    });
-  }, [slug]);
+  const item = useMemo(() => getServiceBySlug(slug), [slug]);
+  const notFound = !item;
 
   if (notFound) {
     return (
       <div className="pt-28 min-h-[60vh] flex flex-col items-center justify-center px-4 bg-white">
-        <h1 className="text-2xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-display)' }}>
-          Service not found
-        </h1>
-        <p className="mt-2 text-stone-600 text-center max-w-md">The service you’re looking for doesn’t exist or has been moved.</p>
-        <Link
-          to="/services"
-          className="mt-6 px-6 py-3 rounded-xl bg-[#0EA5E9] text-white font-semibold hover:bg-[#0284C7] transition"
-        >
+        <h1 className="text-2xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-display)' }}>Service not found</h1>
+        <p className="mt-2 text-stone-600 text-center max-w-md">The service you are looking for does not exist.</p>
+        <Link to="/services" className="mt-6 px-6 py-3 rounded-xl bg-[#2FA084] text-white font-semibold hover:opacity-90 transition">
           View all services
         </Link>
       </div>
     );
   }
 
-  if (!item) {
-    return (
-      <div className="pt-28 min-h-screen bg-white">
-        <div className="h-[min(420px,55vh)] animate-pulse bg-stone-200" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
-          <div className="h-8 w-48 animate-pulse rounded-lg bg-stone-200" />
-          <div className="mt-6 h-12 max-w-2xl animate-pulse rounded-lg bg-stone-200" />
-          <div className="mt-4 h-4 max-w-xl animate-pulse rounded bg-stone-100" />
-          <div className="mt-12 grid gap-6 lg:grid-cols-[1fr_380px]">
-            <div className="space-y-4">
-              <div className="h-24 animate-pulse rounded-2xl bg-stone-100" />
-              <div className="h-24 animate-pulse rounded-2xl bg-stone-100" />
-              <div className="h-24 animate-pulse rounded-2xl bg-stone-100" />
-            </div>
-            <div className="h-64 animate-pulse rounded-2xl bg-stone-100" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const lead = item.shortDescription?.trim() || '';
   const fullDescription = item.description?.trim() || '';
-  const showOverview =
-    fullDescription.length > 0 &&
-    (fullDescription !== lead || fullDescription.length > lead.length + 20);
+  const showOverview = fullDescription.length > 0 && (fullDescription !== lead || fullDescription.length > lead.length + 20);
+  const Icon = iconMap[item.slug] || Shield;
 
   return (
     <div className="pt-28 bg-white">
       <section className="relative min-h-[min(420px,70vh)] overflow-hidden">
         <div className="absolute inset-0">
-          <RemoteImage
-            src={item.image || getServiceNavPreviewImage(slug)}
-            alt=""
-            className="h-full w-full object-cover"
-            loading="eager"
-            fallbackSeed={`svc-hero-${slug}`}
-          />
+          <RemoteImage src={item.image} alt="" className="h-full w-full object-cover" loading="eager" fallbackSeed={`svc-hero-${slug}`} />
           <div className="absolute inset-0 bg-gradient-to-r from-stone-950/95 via-stone-900/80 to-stone-950/70" />
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_70%_20%,rgba(124,58,237,0.25),transparent)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_70%_20%,rgba(93,28,106,0.3),transparent)]" />
         </div>
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20 lg:py-24 flex flex-col justify-end min-h-[min(420px,70vh)]">
           <nav className="text-sm text-white/75" aria-label="Breadcrumb">
             <ol className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <li>
-                <Link to="/" className="hover:text-white transition-colors">
-                  Home
-                </Link>
-              </li>
-              <li className="text-white/40" aria-hidden>
-                /
-              </li>
-              <li>
-                <Link to="/services" className="hover:text-white transition-colors">
-                  Services
-                </Link>
-              </li>
-              <li className="text-white/40" aria-hidden>
-                /
-              </li>
+              <li><Link to="/" className="hover:text-white transition-colors">Home</Link></li>
+              <li className="text-white/40" aria-hidden>/</li>
+              <li><Link to="/services" className="hover:text-white transition-colors">Services</Link></li>
+              <li className="text-white/40" aria-hidden>/</li>
               <li className="text-white/95 font-medium truncate max-w-[min(100%,320px)]">{item.title}</li>
             </ol>
           </nav>
           <motion.div className="mt-8" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-violet-200">
-              <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
-              Service detail
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-violet-200 whitespace-nowrap">
+              <Icon className="h-3.5 w-3.5" strokeWidth={2} />
+              Security consultant
             </div>
-            <h1
-              className="mt-2 text-4xl sm:text-5xl lg:text-6xl font-bold text-white max-w-4xl leading-tight"
-              style={{ fontFamily: 'var(--font-display)' }}
-            >
+            <h1 className="mt-3 text-4xl sm:text-5xl lg:text-6xl font-bold text-white max-w-4xl leading-tight whitespace-nowrap" style={{ fontFamily: 'var(--font-display)' }}>
               {item.title}
             </h1>
             <p className="mt-5 text-lg sm:text-xl text-stone-200 max-w-2xl leading-relaxed">
               {lead || fullDescription.slice(0, 220)}
-              {fullDescription.length > 220 && !lead ? '…' : ''}
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
-              <Link
-                to="/contact"
-                className="inline-flex items-center gap-2 rounded-full bg-[#F97316] px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-orange-900/30 hover:bg-[#EA580C] transition"
-              >
+              <Link to="/contact" className="inline-flex items-center gap-2 rounded-full bg-[#F59E0B] px-6 py-3.5 text-sm font-semibold text-stone-900 shadow-lg hover:bg-[#FBBF24] transition">
                 Discuss this service
                 <ArrowRight className="h-4 w-4" strokeWidth={2} />
               </Link>
-              <Link
-                to="/services"
-                className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-6 py-3.5 text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/15 transition"
-              >
+              <Link to="/services" className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-6 py-3.5 text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/15 transition">
                 All services
                 <ChevronRight className="h-4 w-4" strokeWidth={2} />
               </Link>
@@ -507,75 +517,42 @@ function ServiceDetailBody({ slug }) {
         <div className="grid lg:grid-cols-[1fr_380px] gap-12 lg:gap-16 items-start">
           <div className="space-y-14">
             {showOverview && (
-              <motion.section
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: '-40px' }}
-                transition={{ duration: 0.4 }}
-              >
-                <h2 className="text-2xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-display)' }}>
-                  Overview
-                </h2>
+              <motion.section initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={viewport}>
+                <h2 className="text-2xl font-bold text-stone-900 whitespace-nowrap" style={{ fontFamily: 'var(--font-display)' }}>Overview</h2>
                 <p className="mt-4 text-stone-600 leading-relaxed text-[17px]">{fullDescription}</p>
+                {item.idealFor && <p className="mt-4 text-sm text-stone-500 italic">Best suited for: {item.idealFor}</p>}
               </motion.section>
             )}
-
             {item.outcomes && (
-              <motion.section
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: '-40px' }}
-                transition={{ duration: 0.4 }}
-              >
-                <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-[#0EA5E9]">Target outcomes</h2>
+              <motion.section initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={viewport}>
+                <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-[#2FA084] whitespace-nowrap">Target outcomes</h2>
                 <div className="mt-4 rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50/90 to-white p-6 sm:p-8 shadow-[var(--shadow-card)]">
                   <p className="text-stone-800 text-lg leading-relaxed italic">{item.outcomes}</p>
                 </div>
               </motion.section>
             )}
-
             {item.features?.length > 0 && (
-              <motion.section
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: '-40px' }}
-                transition={{ duration: 0.4 }}
-              >
-                <h2 className="text-2xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-display)' }}>
-                  What’s included
-                </h2>
+              <motion.section initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={viewport}>
+                <h2 className="text-2xl font-bold text-stone-900 whitespace-nowrap" style={{ fontFamily: 'var(--font-display)' }}>What is included</h2>
                 <ul className="mt-6 grid sm:grid-cols-2 gap-4">
                   {item.features.map((f, i) => (
-                    <li
-                      key={i}
-                      className="flex gap-3 rounded-xl border border-stone-200/80 bg-stone-50/80 px-4 py-3.5 text-[15px] text-stone-700 shadow-sm"
-                    >
-                      <CheckCircle2 className="h-5 w-5 shrink-0 text-[#7C3AED]" strokeWidth={2} />
+                    <li key={i} className="flex gap-3 rounded-xl border border-stone-200/80 bg-stone-50/80 px-4 py-3.5 text-[15px] text-stone-700 shadow-sm">
+                      <CheckCircle2 className="h-5 w-5 shrink-0 text-[#5D1C6A]" strokeWidth={2} />
                       <span>{f}</span>
                     </li>
                   ))}
                 </ul>
               </motion.section>
             )}
-
             {item.process?.length > 0 && (
-              <motion.section
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: '-40px' }}
-                transition={{ duration: 0.4 }}
-              >
-                <h2 className="text-2xl font-bold text-stone-900" style={{ fontFamily: 'var(--font-display)' }}>
-                  Methodology
-                </h2>
+              <motion.section initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={viewport}>
+                <h2 className="text-2xl font-bold text-stone-900 whitespace-nowrap" style={{ fontFamily: 'var(--font-display)' }}>Methodology</h2>
                 <div className="mt-6 rounded-2xl border border-stone-200/80 bg-white p-6 sm:p-8 shadow-[var(--shadow-card)]">
                   <div className="relative space-y-8">
                     <div className="absolute left-[17px] top-2 bottom-2 w-0.5 bg-gradient-to-b from-violet-200 via-stone-200 to-transparent" />
                     {item.process.map((p) => (
-                      <div key={p.step} className="relative flex gap-4 pl-0">
-                        <span className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-violet-700 text-xs font-bold text-white shadow-md">
-                          {p.step}
-                        </span>
+                      <div key={p.step} className="relative flex gap-4">
+                        <span className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-violet-700 text-xs font-bold text-white shadow-md">{p.step}</span>
                         <div className="pt-0.5">
                           <span className="font-semibold text-stone-900">{p.title}</span>
                           <p className="mt-1 text-sm text-stone-600 leading-relaxed">{p.description}</p>
@@ -587,27 +564,21 @@ function ServiceDetailBody({ slug }) {
               </motion.section>
             )}
           </div>
-
           <aside className="lg:sticky lg:top-32 space-y-6">
+            <div className="rounded-2xl overflow-hidden aspect-video ring-1 ring-stone-200/80 shadow-[var(--shadow-card)]">
+              <RemoteImage src={item.image} alt={item.title} className="w-full h-full object-cover" fallbackSeed={`svc-aside-${slug}`} />
+            </div>
             <div className="rounded-2xl border border-stone-200/90 bg-gradient-to-br from-violet-50 via-white to-sky-50/40 p-6 shadow-[var(--shadow-card)]">
-              <h3 className="text-lg font-bold text-stone-900" style={{ fontFamily: 'var(--font-display)' }}>
-                Ready to scope this?
-              </h3>
+              <h3 className="text-lg font-bold text-stone-900 whitespace-nowrap" style={{ fontFamily: 'var(--font-display)' }}>Ready to scope this?</h3>
               <p className="mt-2 text-sm text-stone-600 leading-relaxed">
-                Share your environment and constraints—we’ll tailor deliverables, timelines, and reporting to your team.
+                Share your environment and constraints—we will tailor deliverables, timelines, and reporting to your team.
               </p>
-              <Link
-                to="/contact"
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#F97316] py-3.5 text-sm font-semibold text-white shadow-lg shadow-orange-200/40 hover:bg-[#EA580C] transition"
-              >
+              <Link to="/contact" className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#F59E0B] py-3.5 text-sm font-semibold text-stone-900 shadow-lg hover:bg-[#FBBF24] transition">
                 Get a consultation
                 <ArrowRight className="h-4 w-4" strokeWidth={2} />
               </Link>
             </div>
-            <Link
-              to="/services"
-              className="flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white py-3 text-sm font-semibold text-stone-700 hover:border-violet-200 hover:bg-violet-50/50 transition"
-            >
+            <Link to="/services" className="flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white py-3 text-sm font-semibold text-stone-700 hover:border-violet-200 hover:bg-violet-50/50 transition">
               <ChevronRight className="h-4 w-4 rotate-180" strokeWidth={2} />
               Back to all services
             </Link>

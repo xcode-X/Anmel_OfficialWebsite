@@ -104,6 +104,60 @@ backend/
 - Admin: JWT, role-based access (admin only), token expiry
 - API: Helmet, CORS, rate limiting, input validation (express-validator), bcrypt for passwords
 
+## Production deployment
+
+### 1. Build the frontend
+
+```bash
+cd frontend
+npm run build
+```
+
+### 2. Configure backend `.env`
+
+```env
+NODE_ENV=production
+SERVE_FRONTEND=true
+PUBLIC_BASE_URL=https://your-domain.com
+CLIENT_URL=https://your-domain.com
+MONGODB_URI=...
+```
+
+Optional: point `PUBLIC_BASE_URL` at a CDN origin that proxies `/uploads` to your server.
+
+### 3. Run the API (serves site + uploads + gzip)
+
+```powershell
+cd backend
+$env:NODE_ENV="production"
+$env:SERVE_FRONTEND="true"
+npm start
+```
+
+Uploaded images and documents are stored under `backend/uploads/` (not in MongoDB). Migrate existing base64 records once:
+
+```bash
+cd backend
+npm run migrate:media
+```
+
+### Performance notes
+
+- **Gzip/Brotli:** `compression` middleware enabled on all responses
+- **Static caching:** hashed frontend assets cache 1 year; `/uploads` cache 7 days
+- **Security scans:** max concurrent scans controlled by `SCAN_QUEUE_CONCURRENCY` (default 2)
+
+### Cloudflare R2 + CDN (object storage)
+
+For production media at scale, use S3-compatible storage instead of disk:
+
+1. Follow **[docs/CLOUDFLARE-R2-CDN.md](docs/CLOUDFLARE-R2-CDN.md)** to create an R2 bucket and API token.
+2. Set `STORAGE_DRIVER=s3` and the `S3_*` variables in `backend/.env`.
+3. Set `S3_PUBLIC_URL_BASE` to your R2 public URL or custom CDN domain (e.g. `https://cdn.anmel.com`).
+4. Run `npm run migrate:media` to move existing base64/local files into the bucket.
+
+Check storage status: `GET /api/health` → `storage.driver` and `storage.s3`.
+
 ## Future scalability
 
 Architecture is prepared for: client portal, appointment scheduling, payments, security report downloads, multi-admin roles.

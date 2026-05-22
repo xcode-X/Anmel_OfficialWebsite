@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import {
   Mail,
   MailOpen,
@@ -10,22 +10,36 @@ import {
   Check,
   Inbox,
 } from 'lucide-react';
-import api from '../../lib/api';
+import { contactApi } from '../../lib/api';
 
 export default function AdminContacts() {
   const [list, setList] = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    api.get('/contact')
-      .then((data) => setList(Array.isArray(data) ? data : []))
-      .catch(() => setList([]))
-      .finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    try {
+      const data = await contactApi.list();
+      setList(Array.isArray(data) ? data : []);
+    } catch {
+      setList([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    load();
+    const cleanup = contactApi.subscribe((rows) => {
+      if (Array.isArray(rows)) setList(rows);
+      else load();
+      setLoading(false);
+    });
+    return cleanup;
+  }, [load]);
+
   const markRead = async (id) => {
-    await api.patch(`/contact/${id}/read`, { read: true });
+    await contactApi.markRead(id);
     setList((prev) => prev.map((c) => (c._id === id ? { ...c, read: true } : c)));
   };
 
@@ -36,7 +50,6 @@ export default function AdminContacts() {
   return (
     <div className="max-w-5xl space-y-6">
 
-      {/* â”€â”€ Header â”€â”€ */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#2FA084] mb-1">Inbox</p>
@@ -44,7 +57,8 @@ export default function AdminContacts() {
             Contact Submissions
           </h1>
           <p className="mt-1 text-sm text-white/40">
-            {loading ? 'Loadingâ€¦' : `${list.length} total submission${list.length !== 1 ? 's' : ''}`}
+            {loading ? 'Loading…' : `${list.length} total submission${list.length !== 1 ? 's' : ''}`}
+            {!loading && <span className="text-[#2FA084]/70"> · live sync</span>}
           </p>
         </div>
         {unread > 0 && (
@@ -55,7 +69,6 @@ export default function AdminContacts() {
         )}
       </div>
 
-      {/* â”€â”€ Table card â”€â”€ */}
       <div className="rounded-2xl border border-white/8 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left min-w-[640px]">
@@ -72,7 +85,7 @@ export default function AdminContacts() {
               {loading && (
                 <tr>
                   <td colSpan={5} className="px-5 py-12 text-center text-sm text-white/30">
-                    Loading submissionsâ€¦
+                    Loading submissions…
                   </td>
                 </tr>
               )}
@@ -93,10 +106,8 @@ export default function AdminContacts() {
                   <tr
                     className={`group transition-colors hover:bg-white/3 ${!c.read ? 'bg-[#2FA084]/4' : ''}`}
                   >
-                    {/* Sender */}
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        {/* unread dot */}
                         <span
                           className={`shrink-0 w-1.5 h-1.5 rounded-full ${!c.read ? 'bg-[#2FA084]' : 'bg-transparent'}`}
                           aria-hidden
@@ -118,22 +129,21 @@ export default function AdminContacts() {
                       </div>
                     </td>
 
-                    {/* Subject */}
                     <td className="px-5 py-4 hidden md:table-cell">
                       <span className={`text-sm truncate max-w-[240px] block ${!c.read ? 'text-white/80' : 'text-white/45'}`}>
                         {c.subject || <span className="italic text-white/25">No subject</span>}
                       </span>
                     </td>
 
-                    {/* Date */}
                     <td className="px-5 py-4 hidden sm:table-cell">
                       <div className="flex items-center gap-1.5 text-xs text-white/30">
                         <Calendar className="w-3.5 h-3.5" strokeWidth={1.8} />
-                        {new Date(c.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {c.createdAt
+                          ? new Date(c.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                          : '—'}
                       </div>
                     </td>
 
-                    {/* Status */}
                     <td className="px-5 py-4">
                       {!c.read ? (
                         <button
@@ -152,7 +162,6 @@ export default function AdminContacts() {
                       )}
                     </td>
 
-                    {/* Expand toggle */}
                     <td className="px-5 py-4">
                       {c.message && (
                         <button
@@ -177,7 +186,6 @@ export default function AdminContacts() {
                     </td>
                   </tr>
 
-                  {/* Expanded message row */}
                   {expanded === c._id && (
                     <tr className="bg-white/[0.015]">
                       <td colSpan={5} className="px-6 py-5">
@@ -218,11 +226,9 @@ export default function AdminContacts() {
 
       {list.length > 0 && (
         <p className="text-xs text-white/25 px-1">
-          {unread} unread Â· {list.length - unread} read Â· {list.length} total
+          {unread} unread · {list.length - unread} read · {list.length} total
         </p>
       )}
     </div>
   );
 }
-
-

@@ -2,9 +2,10 @@
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, ChevronDown, ChevronRight, ArrowRight, Sparkles, GraduationCap } from 'lucide-react';
-import api from '../../lib/api';
+import { publicApi } from '../../lib/api';
 import { deferIdle } from '../../lib/deferIdle';
-import { servicesHeroImage, getServiceNavPreviewImage, educationHeroImage, getCourseHeroImage } from '../../lib/siteImages';
+import { getServices } from '../../lib/servicesData';
+import { getServiceNavPreviewImage, educationHeroImage, getCourseHeroImage, servicesHeroImage } from '../../lib/siteImages';
 import RemoteImage from '../ui/RemoteImage';
 import logoAnmel from '../../images/logo_anmel_transparent.png';
 
@@ -14,7 +15,6 @@ const navLinks = [
   { to: '/education-consultant', label: 'Education Consultant' },
   { to: '/case-studies', label: 'Case Studies' },
   { to: '/blog', label: 'Blog' },
-  { to: '/contact', label: 'Contact' },
 ];
 
 export default function Nav() {
@@ -24,10 +24,13 @@ export default function Nav() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [servicesOpen, setServicesOpen] = useState(false);
   const [servicesPreviewSlug, setServicesPreviewSlug] = useState(null);
-  const [services, setServices] = useState([]);
   const [coursesList, setCoursesList] = useState([]);
   const [educationOpen, setEducationOpen] = useState(false);
   const [educationPreviewSlug, setEducationPreviewSlug] = useState(null);
+
+  const navServices = useMemo(() => getServices(), []);
+
+  const navCourses = useMemo(() => coursesList, [coursesList]);
 
   /** On light pages, always use solid bar + dark links. On home only, white links until scroll. */
   const navSolid = !isHome || scrolled;
@@ -43,19 +46,13 @@ export default function Nav() {
     let cancelled = false;
     const cancel = deferIdle(() => {
       if (cancelled) return;
-      api.get('/services').then((d) => { if (!cancelled) setServices(d); }).catch(() => { });
-      api.get('/courses').then((d) => { if (!cancelled) setCoursesList(d); }).catch(() => { });
+      publicApi.courses().then((d) => { if (!cancelled) setCoursesList(Array.isArray(d) ? d : []); }).catch(() => { });
     }, 400);
     return () => {
       cancelled = true;
       cancel();
     };
   }, []);
-
-  /** Stable order + merged copy: defaults first, then API-only extras (sorted). Avoids inconsistent lists when API differs. */
-  const navServices = useMemo(() => services, [services]);
-
-  const navCourses = useMemo(() => coursesList, [coursesList]);
 
 
   const previewCourse = educationPreviewSlug
@@ -407,11 +404,6 @@ export default function Nav() {
             <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
               <Link to="/blog" className={`text-[13.5px] font-semibold tracking-wide whitespace-nowrap ${navSolid ? 'text-stone-800' : 'text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]'} hover:text-purple transition-colors relative after:absolute after:left-0 after:bottom-[-2px] after:h-0.5 after:bg-purple after:scale-x-0 hover:after:scale-x-100 after:origin-left after:transition-transform`}>
                 Blog
-              </Link>
-            </motion.div>
-            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-              <Link to="/contact" className={`text-[13.5px] font-semibold tracking-wide whitespace-nowrap ${navSolid ? 'text-stone-800' : 'text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]'} hover:text-purple transition-colors relative after:absolute after:left-0 after:bottom-[-2px] after:h-0.5 after:bg-purple after:scale-x-0 hover:after:scale-x-100 after:origin-left after:transition-transform`}>
-                Contact
               </Link>
             </motion.div>
           </nav>

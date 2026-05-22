@@ -1,5 +1,14 @@
 import nodemailer from 'nodemailer';
 
+export function isSmtpConfigured() {
+  return !!(process.env.SMTP_USER && process.env.SMTP_PASS);
+}
+
+function getFromAddress() {
+  const address = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@anmel.com';
+  return `"Anmel Study Abroad" <${address}>`;
+}
+
 function makeTransporter() {
   return nodemailer.createTransport({
     host:   process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -145,21 +154,20 @@ function buildPlainText({ name, email, tempPassword, courseSlug, activationUrl }
 }
 
 async function sendEmailNotification({ name, email, tempPassword, courseSlug, activationUrl }) {
-  const from = `"Anmel Study Abroad" <${process.env.SMTP_USER || 'noreply@anmel.com'}>`;
-
-  if (!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)) {
-    console.log('[notify][email][dry-run] LMS credentials for', email, tempPassword ? `pwd: ${tempPassword}` : '(existing user)');
-    return { sent: false, dryRun: true };
+  if (!isSmtpConfigured()) {
+    console.warn('[notify][email] SMTP not configured — set SMTP_USER and SMTP_PASS in backend/.env');
+    return { sent: false, dryRun: true, error: 'Email service not configured' };
   }
 
   await makeTransporter().sendMail({
-    from,
+    from:    getFromAddress(),
     to:      email,
     subject: '🎓 Your Anmel LMS Account is Ready — Login Details',
     html:    buildHtmlEmail({ name, email, tempPassword, courseSlug, activationUrl }),
     text:    buildPlainText({ name, email, tempPassword, courseSlug, activationUrl }),
   });
-  return { sent: true, dryRun: false };
+  console.log('[notify][email] LMS login details sent to', email);
+  return { sent: true, dryRun: false, to: email };
 }
 
 async function sendSmsNotification({ phone, name, email, tempPassword }) {
@@ -185,12 +193,21 @@ async function sendSmsNotification({ phone, name, email, tempPassword }) {
 }
 
 export async function notifyStudentProvisioned({ name, email, phone, tempPassword, courseSlug, activationUrl }) {
-  const [emailResult, smsResult] = await Promise.allSettled([
-    sendEmailNotification({ name, email, tempPassword, courseSlug, activationUrl }),
-    sendSmsNotification({ phone, name, email, tempPassword }),
-  ]);
-  return {
-    emailResult: emailResult.status === 'fulfilled' ? emailResult.value : { sent: false, error: emailResult.reason?.message },
-    smsResult:   smsResult.status   === 'fulfilled' ? smsResult.value   : { sent: false, error: smsResult.reason?.message },
-  };
+  let emailResult;
+  try {
+    emailResult = await sendEmailNotification({ name, email, tempPassword, courseSlug, activationUrl });
+  } catch (err) {
+    console.error('[notify][email] Failed to send LMS login email to', email, err.message);
+    emailResult = { sent: false, dryRun: false, error: err.message, to: email };
+  }
+
+  let smsResult = { sent: false, skipped: true };
+  try {
+    smsResult = await sendSmsNotification({ phone, name, email, tempPassword });
+  } catch (err) {
+    console.warn('[notify][sms] Failed:', err.message);
+    smsResult = { sent: false, error: err.message };
+  }
+
+  return { emailResult, smsResult };
 }

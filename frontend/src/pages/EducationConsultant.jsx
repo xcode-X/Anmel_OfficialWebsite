@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, ArrowRight, Bell, CheckCircle2, Users, PlayCircle, Globe2, BookOpen, MapPin, X, Building2, Quote, Star, Award, DollarSign, Calendar, Clock, ChevronRight, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { scholarshipsApi, universitiesApi, testimonialsApi } from '../lib/api';
+import { universitiesApi, testimonialsApi } from '../lib/api';
+import { subscribeContentStream } from '../lib/contentStream';
+import FeaturedUniversityCard from '../components/education/FeaturedUniversityCard';
+import ScholarshipSectionHero from '../components/scholarships/ScholarshipSectionHero';
 
 const announcements = [
   { id: 1, date: 'May 14', text: 'Fall 2026 Admissions are now officially open for UK & Canada!' },
@@ -30,39 +33,71 @@ const process = [
 export default function EducationConsultant() {
   const [activeVideo, setActiveVideo] = useState(null);
   const [openCoursesUni, setOpenCoursesUni] = useState(null);
-  const [scholarships, setScholarships] = useState([]);
   const [partnerUniversities, setPartnerUniversities] = useState([]);
   const [testimonials, setTestimonials] = useState([]);
   const [unisLoading, setUnisLoading] = useState(true);
   const [uniDbDown, setUniDbDown] = useState(false);
 
-  useEffect(() => {
-    const cleanupSchol = scholarshipsApi.poll(setScholarships, 10000);
-
-    // pollFull calls back with (data, isUnavailable).
-    // IMPORTANT: always call setUnisLoading(false) on the first response — success or
-    // DB-unavailable — so the skeleton is never stuck visible forever.
-    const cleanupUni = universitiesApi.pollFull((data, unavailable) => {
-      // Stop the initial skeleton regardless of whether data arrived
-      setUnisLoading(false);
-
-      if (unavailable) {
-        setUniDbDown(true);
-        return; // Keep whatever universities are already in state
-      }
-
+  const loadUniversities = useCallback(async () => {
+    try {
+      const data = await universitiesApi.list();
       setUniDbDown(false);
-      setPartnerUniversities(prev => {
-        // Never replace a populated list with an empty array from a background poll
-        // (an empty result during a brief DB blip would wipe out all cards)
-        if (Array.isArray(data) && (data.length > 0 || prev.length === 0)) return data;
-        return prev;
-      });
-    }, 15000);
-
-    const cleanupTest = testimonialsApi.poll(setTestimonials, 30000);
-    return () => { cleanupSchol(); cleanupUni(); cleanupTest(); };
+      setPartnerUniversities(Array.isArray(data) ? data : []);
+    } catch {
+      setUniDbDown(true);
+      setPartnerUniversities([]);
+    } finally {
+      setUnisLoading(false);
+    }
+    return true;
   }, []);
+
+  useEffect(() => {
+    const loadTestimonials = async () => {
+      try {
+        const data = await testimonialsApi.list();
+        setTestimonials(Array.isArray(data) ? data : []);
+      } catch {
+        setTestimonials([]);
+      }
+    };
+    loadTestimonials();
+
+    loadUniversities();
+
+    const cleanups = [];
+    cleanups.push(
+      universitiesApi.subscribe((rows) => {
+        setPartnerUniversities(rows);
+        setUniDbDown(false);
+        setUnisLoading(false);
+      }),
+    );
+    cleanups.push(
+      testimonialsApi.subscribe((rows) => {
+        setTestimonials(rows);
+      }),
+    );
+    cleanups.push(
+      subscribeContentStream((resource) => {
+        if (resource === 'universities') loadUniversities();
+        if (resource === 'testimonials') loadTestimonials();
+      }),
+    );
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        loadTestimonials();
+        loadUniversities();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+
+    return () => {
+      cleanups.forEach((fn) => fn());
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [loadUniversities]);
 
   const toggleCourses = (id) => {
     setOpenCoursesUni(openCoursesUni === id ? null : id);
@@ -258,98 +293,70 @@ export default function EducationConsultant() {
       <section id="scholarships" className="py-28 bg-white border-y border-slate-200 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[radial-gradient(ellipse_at_top_right,rgba(59,130,246,0.08),transparent_70%)] pointer-events-none" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-16">
-            <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-2 text-sky-600 font-bold uppercase tracking-wider text-sm mb-3">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-sky-500"></span>
-                </span>
-                Live Updates
-              </div>
+          <div className="grid lg:grid-cols-[1fr_1.15fr] gap-10 lg:gap-12 xl:gap-14 items-center">
+            <div className="flex flex-col justify-center">
               <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-display)' }}>
                 Scholarship Opportunities
               </h2>
-              <p className="mt-4 text-slate-600 text-lg">Real-time listings of global grants and scholarships. Updated instantly when new funds become available.</p>
-            </div>
-            <Link to="/student-application" className="inline-flex items-center gap-2 text-white font-bold bg-slate-900 px-8 py-4 rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all whitespace-nowrap">
-              Submit General Application <ArrowRight className="w-5 h-5" />
-            </Link>
-          </div>
 
-          {scholarships.length === 0 ? (
-            <div className="bg-slate-50 border border-slate-200 rounded-3xl p-12 text-center text-slate-500">
-              <Award className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-              <p className="text-lg">Waiting for new scholarships to be posted...</p>
-            </div>
-          ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              <AnimatePresence>
-                {scholarships.map((sch, i) => (
-                  <motion.div 
-                    key={sch._id} 
-                    initial={{ opacity: 0, scale: 0.95, y: 20 }} 
-                    animate={{ opacity: 1, scale: 1, y: 0 }} 
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    transition={{ delay: i * 0.05 }} 
-                    className="group bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-200/50 hover:shadow-2xl hover:-translate-y-2 transition-all overflow-hidden flex flex-col relative"
-                  >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-sky-50 to-transparent rounded-bl-full -z-0 opacity-50"></div>
-                    <div className="p-8 flex-1 flex flex-col relative z-10">
-                      <div className="flex justify-between items-start mb-6">
-                        <span className="px-3 py-1 bg-sky-50 text-sky-600 text-xs font-bold uppercase tracking-wider rounded-lg border border-sky-100">
-                          {sch.scholarshipType}
-                        </span>
-                        {sch.fundingStatus && (
-                          <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-xs font-bold uppercase tracking-wider rounded-lg border border-emerald-100">
-                            {sch.fundingStatus}
-                          </span>
-                        )}
-                      </div>
-                      
-                      <h3 className="text-2xl font-bold text-slate-900 mb-2 leading-tight group-hover:text-sky-600 transition-colors">{sch.title}</h3>
-                      <div className="text-slate-600 text-sm font-medium mb-6 flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-slate-400" /> {sch.university}, {sch.country}
-                      </div>
+              <div className="mt-6 space-y-4 text-slate-600 text-base sm:text-lg leading-relaxed">
+                <p>
+                  We connect students with a wide range of funding options — from <strong className="text-slate-800 font-semibold">merit-based</strong> and <strong className="text-slate-800 font-semibold">need-based</strong> awards to <strong className="text-slate-800 font-semibold">full</strong> and <strong className="text-slate-800 font-semibold">partial</strong> scholarships offered by governments, partner universities, and external foundations across the UK, Canada, Australia, the US, and beyond.
+                </p>
+                <p>
+                  Whether you are pursuing undergraduate, master&apos;s, or doctoral study, listings include fully funded packages, tuition-only grants, and living-allowance support for STEM, business, health sciences, and humanities programmes. New opportunities are added in <strong className="text-slate-800 font-semibold">real time</strong> as partner institutions release fresh intakes — click below to browse what is available right now.
+                </p>
+              </div>
 
-                      {sch.amount && (
-                        <div className="flex items-center gap-2 text-2xl font-bold text-emerald-600 mb-4">
-                          <DollarSign className="w-6 h-6" /> {sch.amount}
-                        </div>
-                      )}
-
-                      <p className="text-sm text-slate-600 leading-relaxed mb-6 flex-1 line-clamp-3">
-                        <strong className="text-slate-900">Eligibility:</strong> {sch.eligibility}
-                      </p>
-
-                      <div className="flex items-center gap-2 text-sm font-bold text-rose-500 mb-6 bg-rose-50 px-4 py-2 rounded-xl">
-                        <Calendar className="w-4 h-4" /> 
-                        Deadline: {new Date(sch.deadline).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-                      </div>
-
-                      <Link to="/student-application" className="w-full py-4 rounded-xl bg-slate-900 text-white font-bold text-center hover:bg-orange-500 transition-colors flex items-center justify-center gap-2">
-                        Apply Now <ArrowRight className="w-4 h-4" />
-                      </Link>
-                    </div>
-                  </motion.div>
+              <div className="mt-6 flex flex-wrap gap-2">
+                {['Merit-based', 'Need-based', 'Fully Funded', 'Partial', 'Government', 'University'].map((type) => (
+                  <span key={type} className="px-3 py-1 rounded-full bg-sky-50 text-sky-700 text-xs font-bold uppercase tracking-wide border border-sky-100">
+                    {type}
+                  </span>
                 ))}
-              </AnimatePresence>
+              </div>
+
+              <div className="mt-8 flex flex-wrap items-center gap-4">
+                <Link
+                  to="/education-consultant/scholarships"
+                  className="inline-flex items-center gap-2 text-white font-semibold bg-slate-900 px-6 py-3 rounded-full text-sm shadow-lg hover:shadow-xl hover:bg-slate-800 transition-all"
+                >
+                  Details
+                  <ChevronRight className="w-4 h-4" />
+                </Link>
+                <Link to="/student-application" className="inline-flex items-center gap-2 text-slate-600 font-semibold text-sm hover:text-slate-900 transition-colors">
+                  Submit general application <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
             </div>
-          )}
+
+            <div className="flex items-center justify-center lg:justify-end">
+              <ScholarshipSectionHero />
+            </div>
+          </div>
         </div>
       </section>
 
       {/* Featured Universities */}
-      <section id="universities" className="py-28 bg-slate-50 border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
+      <section id="universities" className="py-28 bg-gradient-to-b from-slate-50 via-white to-slate-50 border-b border-slate-200 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-[480px] h-[480px] bg-sky-400/8 rounded-full blur-3xl pointer-events-none -translate-x-1/3 -translate-y-1/3" />
+        <div className="absolute bottom-0 right-0 w-[520px] h-[520px] bg-orange-400/8 rounded-full blur-3xl pointer-events-none translate-x-1/4 translate-y-1/4" />
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="max-w-3xl mx-auto text-center mb-14">
+            <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.22em] text-sky-600 mb-4">
+              <Building2 className="w-4 h-4" />
+              Global partners
+            </p>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-display)' }}>
               Featured Universities
             </h2>
-            <p className="mt-4 text-slate-600 text-lg">Explore campus life and available courses at our prestigious partner institutions.</p>
+            <p className="mt-4 text-slate-600 text-lg leading-relaxed">
+              Explore world-class campuses, programme options, and entry pathways at institutions we work with directly — updated live from our partner network.
+            </p>
           </div>
 
-          <div className="grid lg:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8">
             {unisLoading ? (
               // Skeleton cards while the first fetch is in-flight
               [1, 2, 3].map(i => (
@@ -382,38 +389,12 @@ export default function EducationConsultant() {
             ) : (
               <AnimatePresence>
                 {partnerUniversities.map((uni, idx) => (
-                <motion.div key={uni._id || uni.idName} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} viewport={{ once: true }} transition={{ delay: idx * 0.05 }} className="bg-white rounded-[2rem] overflow-hidden border border-slate-200 shadow-xl shadow-slate-200/50 group flex flex-col">
-                  <div className="relative h-64 overflow-hidden bg-slate-800">
-                    {uni.image
-                      ? <img src={uni.image} alt={uni.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000" />
-                      : <div className="w-full h-full flex items-center justify-center"><Building2 className="w-16 h-16 text-white/20" /></div>
-                    }
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent" />
-                    <div className="absolute top-4 left-4 bg-white/95 backdrop-blur-sm px-4 py-1.5 rounded-full text-xs font-bold text-slate-900 flex items-center gap-1.5 shadow-lg">
-                      <MapPin className="w-3.5 h-3.5" /> {uni.country}
-                    </div>
-                    <div className="absolute bottom-6 left-6 right-6">
-                      <h3 className="text-2xl font-bold text-white drop-shadow-md" style={{ fontFamily: 'var(--font-display)' }}>{uni.name}</h3>
-                    </div>
-                  </div>
-                  
-                  <div className="p-8 flex-1 flex flex-col">
-                    <div className="flex gap-4 mb-6">
-                      <button 
-                        onClick={() => setActiveVideo({ ...uni, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4' })}
-                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-sky-50 text-sky-700 font-bold hover:bg-sky-100 transition-colors"
-                      >
-                        <PlayCircle className="w-5 h-5" /> Tour
-                      </button>
-                      <Link 
-                        to={`/university/${uni._id || uni.idName}/courses`}
-                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-bold border-slate-200 text-slate-700 hover:border-slate-300 transition-colors"
-                      >
-                        <BookOpen className="w-5 h-5" /> Courses
-                      </Link>
-                    </div>
-                  </div>
-                </motion.div>
+                  <FeaturedUniversityCard
+                    key={uni._id || uni.idName}
+                    uni={uni}
+                    index={idx}
+                    onTour={setActiveVideo}
+                  />
                 ))}
               </AnimatePresence>
             )}

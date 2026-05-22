@@ -6,7 +6,7 @@ import {
   Radio, Shield, Sparkles, Video, X, Code2, Palette, ExternalLink, Lock,
 } from 'lucide-react';
 import { lmsContent, studentRegistrations } from '../lib/api';
-import api from '../lib/api';
+import api, { publicApi } from '../lib/api';
 
 const PORTAL_PREVIEW_KEY = 'anmel_portal_preview';
 
@@ -63,8 +63,16 @@ export default function StudentPortal() {
     });
   }, [courseFilter, typeFilter, sourceItems]);
 
+  const courseTitleBySlug = useMemo(() => {
+    const map = {};
+    courses.forEach((course) => {
+      if (course?.slug) map[course.slug] = course.title || course.slug;
+    });
+    return map;
+  }, [courses]);
+
   useEffect(() => {
-    api.get('/courses').then((d) => setCourses(Array.isArray(d) ? d : [])).catch(() => setCourses([]));
+    publicApi.courses().then((d) => setCourses(Array.isArray(d) ? d : [])).catch(() => setCourses([]));
   }, []);
 
   useEffect(() => {

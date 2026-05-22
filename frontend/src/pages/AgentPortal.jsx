@@ -114,6 +114,7 @@ export default function AgentPortal() {
   if (loading) return <div className="min-h-screen bg-stone-50 flex items-center justify-center">Loading...</div>;
 
   return (
+    <>
     <div className="min-h-screen bg-stone-50 flex flex-col md:flex-row pt-20">
       <aside className="w-full md:w-64 bg-slate-900 text-white flex-shrink-0">
         <div className="p-6">
@@ -211,5 +212,6 @@ export default function AgentPortal() {
     <AnimatePresence>
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
     </AnimatePresence>
+    </>
   );
 }

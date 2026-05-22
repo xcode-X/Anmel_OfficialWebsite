@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Activity,
@@ -29,7 +29,7 @@ import {
   WidthType,
   BorderStyle,
 } from 'docx';
-import { api } from '../lib/api';
+import { api, securityChecker } from '../lib/api';
 import { notifySecurityScanComplete } from '../lib/securityScanBroadcast';
 import logoAnmel from '../images/logo_anmel_transparent.png';
 
@@ -99,6 +99,7 @@ export default function ApplicationSecurityChecker() {
       const decoder = new TextDecoder();
       let buffer = '';
       let gotPayload = false;
+      let capturedPayload = null;
       // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await reader.read();
@@ -137,6 +138,7 @@ export default function ApplicationSecurityChecker() {
               }
             }
             if (obj.channel === 'result' && obj.type === 'complete' && obj.payload) {
+              capturedPayload = obj.payload;
               setResult(obj.payload);
               gotPayload = true;
             }
@@ -145,14 +147,18 @@ export default function ApplicationSecurityChecker() {
           }
         }
       }
-      return { fallback: false, gotPayload };
+      return { fallback: false, gotPayload, payload: capturedPayload };
     };
 
     try {
       const streamResult = await tryLiveStream();
+      let finalResult = streamResult.payload || null;
       if (streamResult.fallback || !streamResult.gotPayload) {
-        const data = await api.post('/security-checker/analyze', { url, scanMode, scanDepth });
-        setResult(data);
+        finalResult = await api.post('/security-checker/analyze', { url, scanMode, scanDepth });
+      }
+      if (finalResult) {
+        setResult(finalResult);
+        await securityChecker.persistRecord(finalResult, { url, scanMode, scanDepth });
       }
       setPhase('Analysis completed.');
       notifySecurityScanComplete();

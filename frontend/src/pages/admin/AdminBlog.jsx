@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   BookOpen,
   Calendar,
@@ -12,8 +12,10 @@ import {
   Tag,
   Trash2,
   User,
+  X,
 } from 'lucide-react';
-import api from '../../lib/api';
+import { blogApi } from '../../lib/api';
+import { isBlogImageSrc } from '../../lib/siteImages';
 
 const CATEGORIES = ['Security', 'Compliance', 'Development', 'Education', 'News'];
 
@@ -25,7 +27,7 @@ const emptyForm = () => ({
   category: 'Security',
   featuredImage: '',
   author: 'Anmel Inc Team',
-  published: false,
+  published: true,
 });
 
 function slugify(s) {
@@ -38,22 +40,42 @@ function slugify(s) {
 
 export default function AdminBlog() {
   const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [notice, setNotice] = useState({ type: '', text: '' });
   const [imageState, setImageState] = useState({ uploading: false, error: '' });
 
-  const load = useCallback(() => {
-    api
-      .get('/blog')
-      .then((data) => setPosts(Array.isArray(data) ? data : []))
-      .catch(() => setPosts([]));
+  const load = useCallback(async () => {
+    try {
+      const data = await blogApi.list();
+      setPosts(Array.isArray(data) ? data : []);
+    } catch {
+      setPosts([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     load();
-  }, [load]);
+    const cleanup = blogApi.subscribe((rows) => {
+      if (Array.isArray(rows)) {
+        setPosts(rows);
+        setLoading(false);
+        if (editing?._id) {
+          const fresh = rows.find((r) => r._id === editing._id);
+          if (!fresh) {
+            setEditing(null);
+            setForm(emptyForm());
+          }
+        }
+      }
+    });
+    return cleanup;
+  }, [load, editing?._id]);
 
   const showNotice = (type, text) => {
     setNotice({ type, text });
@@ -64,14 +86,26 @@ export default function AdminBlog() {
     e.preventDefault();
     setSaving(true);
     setNotice({ type: '', text: '' });
+    const wasEditing = !!editing;
     try {
       const payload = { ...form, slug: form.slug?.trim() || slugify(form.title) };
-      if (editing) await api.put(`/blog/${editing._id}`, payload);
-      else await api.post('/blog', payload);
+      const saved = wasEditing
+        ? await blogApi.update(editing._id, payload)
+        : await blogApi.create(payload);
       setEditing(null);
       setForm(emptyForm());
-      load();
-      showNotice('ok', editing ? 'Post updated. The public blog will refresh automatically.' : 'Post saved. The public blog will refresh automatically.');
+      if (saved?._id) {
+        setPosts((prev) => {
+          const next = prev.filter((p) => p._id !== saved._id);
+          return [saved, ...next];
+        });
+      }
+      showNotice(
+        'ok',
+        wasEditing
+          ? 'Post updated. Changes are live on the public blog.'
+          : 'Post created. It is live on the public blog.',
+      );
     } catch (err) {
       showNotice('err', err.message || 'Save failed');
     } finally {
@@ -81,32 +115,51 @@ export default function AdminBlog() {
 
   const remove = async (id) => {
     if (!confirm('Delete this post permanently?')) return;
+    setDeletingId(id);
     try {
-      await api.delete(`/blog/${id}`);
+      await blogApi.remove(id);
+      setPosts((prev) => prev.filter((p) => p._id !== id));
       if (editing?._id === id) {
         setEditing(null);
         setForm(emptyForm());
       }
-      load();
-      showNotice('ok', 'Post removed.');
+      showNotice('ok', 'Post deleted.');
     } catch (err) {
       showNotice('err', err.message || 'Delete failed');
+    } finally {
+      setDeletingId(null);
     }
   };
 
-  const startEdit = (p) => {
-    setEditing(p);
+  const startEdit = async (p) => {
+    setNotice({ type: '', text: '' });
+    let full = p;
+    try {
+      const detail = await blogApi.getById(p._id);
+      if (detail) full = detail;
+    } catch {
+      try {
+        const bySlug = await blogApi.getBySlug(p.slug);
+        if (bySlug) full = bySlug;
+      } catch { /* use list row */ }
+    }
+    setEditing(full);
     setForm({
-      title: p.title || '',
-      slug: p.slug || '',
-      excerpt: p.excerpt || '',
-      content: p.content || '',
-      category: p.category || 'Security',
-      featuredImage: p.featuredImage || '',
-      author: p.author || 'Anmel Inc Team',
-      published: !!p.published,
+      title: full.title || '',
+      slug: full.slug || '',
+      excerpt: full.excerpt || '',
+      content: full.content || '',
+      category: full.category || 'Security',
+      featuredImage: full.featuredImage || '',
+      author: full.author || 'Anmel Inc Team',
+      published: !!full.published,
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setForm(emptyForm());
   };
 
   const compressImageToDataUrl = async (file, maxDim = 1200, quality = 0.75) => {
@@ -141,7 +194,6 @@ export default function AdminBlog() {
 
     ctx.drawImage(img, 0, 0, targetW, targetH);
 
-    // Use JPEG for smaller size. If conversion fails, fall back to original.
     try {
       return canvas.toDataURL('image/jpeg', quality);
     } catch {
@@ -181,14 +233,13 @@ export default function AdminBlog() {
               Blog management
             </h1>
             <p className="mt-2 max-w-xl text-sm text-neutral-400">
-              Draft and publish articles with excerpts, hero imagery, and HTML body. Published posts appear on the public blog
-              immediately via live sync.
+              Create, edit, and delete articles. Changes sync to Firestore and the public blog in real time.
             </p>
           </div>
           <div className="flex items-center gap-2 text-xs text-neutral-500">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-emerald-300 ring-1 ring-emerald-500/25">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-              Live to site
+              Live sync
             </span>
           </div>
         </div>
@@ -219,16 +270,21 @@ export default function AdminBlog() {
             {editing && (
               <button
                 type="button"
-                onClick={() => {
-                  setEditing(null);
-                  setForm(emptyForm());
-                }}
-                className="text-xs font-medium text-neutral-400 hover:text-white"
+                onClick={cancelEdit}
+                className="inline-flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white"
               >
-                Clear &amp; new
+                <X className="h-3.5 w-3.5" />
+                Cancel edit
               </button>
             )}
           </div>
+
+          {editing && (
+            <p className="text-xs text-neutral-500 rounded-lg bg-white/5 border border-white/10 px-3 py-2">
+              Editing: <span className="text-white font-medium">{editing.title}</span>
+              <span className="font-mono text-neutral-500 ml-2">#{editing._id?.slice(0, 8)}</span>
+            </p>
+          )}
 
           <div className="grid gap-5 sm:grid-cols-2">
             <label className="block sm:col-span-2">
@@ -322,7 +378,7 @@ export default function AdminBlog() {
                   disabled={imageState.uploading}
                 />
                 <p className="mt-2 text-[11px] text-neutral-500">
-                  Upload a small image. We compress it automatically before saving (data stored in `featuredImage`).
+                  Upload a small image. We compress it automatically before saving.
                 </p>
                 {imageState.error && <p className="mt-2 text-[11px] text-red-400">{imageState.error}</p>}
 
@@ -390,7 +446,7 @@ export default function AdminBlog() {
               />
               <div>
                 <span className="font-medium text-white">Published</span>
-                <p className="text-xs text-neutral-500">Only published posts appear on the public blog (unauthenticated visitors).</p>
+                <p className="text-xs text-neutral-500">Published posts appear on the public blog immediately.</p>
               </div>
             </label>
           </div>
@@ -402,14 +458,31 @@ export default function AdminBlog() {
               className="inline-flex items-center gap-2 rounded-xl bg-[#2FA084] px-6 py-3 text-sm font-semibold text-[#0A0F1A] shadow-lg shadow-[#2FA084]/20 transition hover:brightness-110 disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              {editing ? 'Update post' : 'Create post'}
+              {editing ? 'Save changes' : 'Create post'}
             </button>
+            {editing && (
+              <button
+                type="button"
+                onClick={() => remove(editing._id)}
+                disabled={deletingId === editing._id || saving}
+                className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-3 text-sm font-semibold text-red-300 hover:bg-red-500/20 disabled:opacity-50"
+              >
+                {deletingId === editing._id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                Delete post
+              </button>
+            )}
           </div>
         </form>
 
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-500">All posts</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-500">
+              All posts {loading ? '' : `(${posts.length})`}
+            </h3>
             <button
               type="button"
               onClick={load}
@@ -418,57 +491,92 @@ export default function AdminBlog() {
               Refresh
             </button>
           </div>
-          <ul className="space-y-3">
-            {posts.map((p) => (
-              <li
-                key={p._id}
-                className="group rounded-xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-[#2FA084]/30"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-medium text-white truncate">{p.title}</p>
-                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-500">
-                      <span className="rounded-md bg-white/5 px-2 py-0.5 font-mono text-[10px] text-neutral-400">{p.slug}</span>
-                      {p.published ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-400">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Live
-                        </span>
-                      ) : (
-                        <span className="text-amber-200/90">Draft</span>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-neutral-500">
+              <Loader2 className="h-6 w-6 animate-spin mr-2" />
+              Loading posts…
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {posts.map((p) => {
+                const isActive = editing?._id === p._id;
+                return (
+                  <li
+                    key={p._id}
+                    className={`group rounded-xl border p-4 transition ${
+                      isActive
+                        ? 'border-[#2FA084]/50 bg-[#2FA084]/10'
+                        : 'border-white/10 bg-white/[0.04] hover:border-[#2FA084]/30'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      {isBlogImageSrc(p.featuredImage) && (
+                        <img
+                          src={p.featuredImage}
+                          alt=""
+                          className="h-14 w-14 shrink-0 rounded-lg object-cover border border-white/10"
+                        />
                       )}
-                      {p.category && <span className="text-neutral-500">Â· {p.category}</span>}
-                    </p>
-                    {p.publishedAt && (
-                      <p className="mt-2 flex items-center gap-1 text-[11px] text-neutral-600">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(p.publishedAt).toLocaleString()}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 gap-1">
-                    <button
-                      type="button"
-                      onClick={() => startEdit(p)}
-                      className="rounded-lg p-2 text-[#2FA084] hover:bg-white/10"
-                      title="Edit"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => remove(p._id)}
-                      className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
-                      title="Delete"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-          {posts.length === 0 && (
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-white truncate">{p.title}</p>
+                        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-500">
+                          <span className="rounded-md bg-white/5 px-2 py-0.5 font-mono text-[10px] text-neutral-400">
+                            {p.slug}
+                          </span>
+                          {p.published ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-400">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Live
+                            </span>
+                          ) : (
+                            <span className="text-amber-200/90">Draft</span>
+                          )}
+                          {p.category && <span className="text-neutral-500">· {p.category}</span>}
+                          {isActive && (
+                            <span className="text-[#2FA084] font-semibold">Editing</span>
+                          )}
+                        </p>
+                        {p.updatedAt && (
+                          <p className="mt-2 flex items-center gap-1 text-[11px] text-neutral-600">
+                            <Calendar className="h-3 w-3" />
+                            Updated {new Date(p.updatedAt).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(p)}
+                          className="rounded-lg p-2 text-[#2FA084] hover:bg-white/10"
+                          title="Edit"
+                          aria-label={`Edit ${p.title}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => remove(p._id)}
+                          disabled={deletingId === p._id}
+                          className="rounded-lg p-2 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                          title="Delete"
+                          aria-label={`Delete ${p.title}`}
+                        >
+                          {deletingId === p._id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {!loading && posts.length === 0 && (
             <p className="rounded-xl border border-dashed border-white/15 p-8 text-center text-sm text-neutral-500">
               No posts yet. Create your first article on the left.
             </p>
@@ -478,6 +586,3 @@ export default function AdminBlog() {
     </div>
   );
 }
-
-
-

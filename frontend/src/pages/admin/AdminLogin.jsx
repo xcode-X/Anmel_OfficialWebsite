@@ -4,8 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity,
   BookOpen,
+  Briefcase,
   Clock3,
-  GraduationCap,
   ShieldCheck,
   Lock,
   UserPlus,
@@ -20,7 +20,7 @@ import {
 import { useAuth } from '../../context/AppContext';
 import logoAnmel from '../../images/logo_anmel_transparent.png';
 import { ADMIN_BASE } from '../../lib/adminPaths';
-import { api } from '../../lib/api';
+import { auth } from '../../lib/api';
 
 const TAB_LOGIN    = 'login';
 const TAB_REGISTER = 'register';
@@ -47,7 +47,7 @@ export default function AdminLogin() {
 
   /* ── live stats ── */
   const [now, setNow]               = useState(() => new Date());
-  const [stats, setStats]           = useState({ blog: 0, services: 0, lms: 0 });
+  const [stats, setStats]           = useState({ blog: 0, caseStudies: 0, lms: 0 });
   const [lastRefresh, setLastRefresh] = useState(null);
   const [statusText, setStatusText] = useState('Connecting...');
 
@@ -69,12 +69,12 @@ export default function AdminLogin() {
   useEffect(() => {
     const refresh = async () => {
       try {
-        const [blog, services, lms] = await Promise.all([
-          api.get('/blog').then((d) => d.length),
-          api.get('/services').then((d) => d.length),
-          api.get('/lms-content').then((d) => d.length),
+        const [blog, caseStudies, lms] = await Promise.all([
+          api.getSafe('/blog', []).then((d) => (Array.isArray(d) ? d.length : 0)),
+          api.getSafe('/case-studies', []).then((d) => (Array.isArray(d) ? d.length : 0)),
+          api.getSafe('/lms-content', []).then((d) => (Array.isArray(d) ? d.length : 0)),
         ]);
-        setStats({ blog, services, lms });
+        setStats({ blog, caseStudies, lms });
         setLastRefresh(new Date());
         setStatusText('All systems online');
       } catch {
@@ -117,14 +117,14 @@ export default function AdminLogin() {
 
     setRegLoading(true);
     try {
-      await api.post('/auth/register-admin', {
+      await auth.registerAdmin({
         name: regName.trim(),
         email: regEmail.trim(),
         password: regPw,
       });
-      setRegSuccess(`Account created for ${regEmail.trim()}. You can now sign in.`);
-      setRegName(''); setRegEmail(''); setRegPw(''); setRegPwC('');
-      setTimeout(() => { setTab(TAB_LOGIN); setRegSuccess(''); }, 2800);
+      setRegSuccess(`Account created for ${regEmail.trim()}. Signing you in…`);
+      await login(regEmail.trim(), regPw);
+      navigate(ADMIN_BASE, { replace: true });
     } catch (err) {
       setRegError(err.message || 'Registration failed. Please try again.');
     } finally {
@@ -186,16 +186,16 @@ export default function AdminLogin() {
               <span className="text-[#2FA084]">Anmel Inc</span> Admin
             </h1>
             <p className="text-sm leading-relaxed text-white/40 max-w-sm mb-7">
-              Secure command center for student intake, LMS publishing, blog management, and
+              Secure command center for scholarship and intern applications, LMS publishing, blog management, and
               operations monitoring. Live metrics refresh every minute.
             </p>
 
             {/* live stats */}
             <div className="grid grid-cols-3 gap-3 mb-6">
               {[
-                { label: 'Articles', value: stats.blog,     Icon: BookOpen },
-                { label: 'Services', value: stats.services, Icon: GraduationCap },
-                { label: 'LMS',      value: stats.lms,       Icon: Activity },
+                { label: 'Articles', value: stats.blog,         Icon: BookOpen },
+                { label: 'Case studies', value: stats.caseStudies, Icon: Briefcase },
+                { label: 'LMS',      value: stats.lms,          Icon: Activity },
               ].map(({ label, value, Icon }) => (
                 <div
                   key={label}

@@ -1,4 +1,3 @@
-import TrustBar from './TrustBar';
 import ComplianceTrustSection from './ComplianceTrustSection';
 import ClientSection from './ClientSection';
 import ProblemSection from './ProblemSection';
@@ -18,7 +17,6 @@ import FinalCTASection from './FinalCTASection';
 export default function HomeBelowFold() {
   return (
     <>
-      <TrustBar />
       <ComplianceTrustSection />
       <ClientSection />
       <ProblemSection />

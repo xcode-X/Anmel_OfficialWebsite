@@ -1,8 +1,10 @@
-﻿import { Link } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { Link } from 'react-router-dom';
 import { Linkedin, Twitter, Mail, MapPin, ArrowRight, Github, Youtube } from 'lucide-react';
 import NewsletterSignup from '../lead/NewsletterSignup';
-import ChecklistDownload from '../lead/ChecklistDownload';
 import MonroviaMap from '../lead/MonroviaMap';
+
+const ChecklistDownload = lazy(() => import('../lead/ChecklistDownload'));
 import logoAnmel from '../../images/logo_anmel_transparent.png';
 
 const footerLinks = {
@@ -136,7 +138,9 @@ export default function Footer() {
             <div className="space-y-6 order-1 lg:order-2">
               <NewsletterSignup />
               <div id="security-checklist">
-                <ChecklistDownload />
+                <Suspense fallback={<div className="h-48 rounded-xl border border-white/10 bg-white/5 animate-pulse" aria-hidden />}>
+                  <ChecklistDownload />
+                </Suspense>
               </div>
             </div>
           </div>

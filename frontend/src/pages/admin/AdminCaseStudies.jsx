@@ -9,11 +9,14 @@ import {
   Loader2,
   Pencil,
   Palette,
+  Share2,
   Sparkles,
   Trash2,
   Trophy,
 } from 'lucide-react';
-import api from '../../lib/api';
+import { caseStudiesApi } from '../../lib/api';
+import { isMediaSrc } from '../../lib/siteImages';
+import CaseStudySocialShareModal from '../../components/caseStudies/CaseStudySocialShareModal';
 
 const CATEGORIES = [
   'Security Assessment',
@@ -51,15 +54,19 @@ const emptyForm = () => ({
   metrics: [emptyMetric(), emptyMetric(), emptyMetric()],
   order: 0,
   published: true,
+  shareOnPublish: true,
 });
 
 export default function AdminCaseStudies() {
   const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState({ type: '', text: '' });
   const [imageState, setImageState] = useState({ uploading: false, error: '' });
+  const [shareTarget, setShareTarget] = useState(null);
 
   const compressImageToDataUrl = async (file, maxDim = 1200, quality = 0.75) => {
     const dataUrl = await new Promise((resolve, reject) => {
@@ -115,16 +122,31 @@ export default function AdminCaseStudies() {
     }
   };
 
-  const load = useCallback(() => {
-    api
-      .get('/case-studies')
-      .then((data) => setItems(Array.isArray(data) ? data : []))
-      .catch(() => setItems([]));
+  const load = useCallback(async () => {
+    try {
+      const data = await caseStudiesApi.list();
+      setItems(Array.isArray(data) ? data : []);
+    } catch {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     load();
-  }, [load]);
+    const cleanup = caseStudiesApi.subscribe((rows) => {
+      if (Array.isArray(rows)) {
+        setItems(rows);
+        setLoading(false);
+        if (editing?._id && !rows.find((r) => r._id === editing._id)) {
+          setEditing(null);
+          setForm(emptyForm());
+        }
+      }
+    });
+    return cleanup;
+  }, [load, editing?._id]);
 
   const showNotice = (type, text) => {
     setNotice({ type, text });
@@ -145,12 +167,34 @@ export default function AdminCaseStudies() {
         metrics,
         order: Number(form.order) || 0,
       };
-      if (editing) await api.put(`/case-studies/${editing._id}`, payload);
-      else await api.post('/case-studies', payload);
+      delete payload.shareOnPublish;
+
+      const result = editing
+        ? await caseStudiesApi.update(editing._id, payload)
+        : await caseStudiesApi.create(payload);
+
+      if (result?._id) {
+        setItems((prev) => {
+          const next = prev.filter((p) => p._id !== result._id);
+          return [result, ...next].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+        });
+      }
+
+      if (result.slugAdjusted) {
+        showNotice(
+          'ok',
+          `Saved as "${result.slug}". The slug "${result.requestedSlug}" was already taken — edit the existing study in the library or keep this new slug.`,
+        );
+      }
+
+      if (form.shareOnPublish && form.published) {
+        setShareTarget(result);
+      } else if (!result.slugAdjusted) {
+        showNotice('ok', 'Case study saved. The public case studies page updates in real time.');
+      }
+
       setEditing(null);
       setForm(emptyForm());
-      load();
-      showNotice('ok', 'Case study saved. The public case studies page updates in real time.');
     } catch (err) {
       showNotice('err', err.message || 'Save failed');
     } finally {
@@ -158,23 +202,35 @@ export default function AdminCaseStudies() {
     }
   };
 
+  const slugConflict = items.find(
+    (p) => p.slug === (form.slug?.trim() || slugify(form.title)) && p._id !== editing?._id,
+  );
+
   const remove = async (id) => {
     if (!confirm('Delete this case study?')) return;
+    setDeletingId(id);
     try {
-      await api.delete(`/case-studies/${id}`);
+      await caseStudiesApi.remove(id);
+      setItems((prev) => prev.filter((p) => p._id !== id));
       if (editing?._id === id) {
         setEditing(null);
         setForm(emptyForm());
       }
-      load();
       showNotice('ok', 'Removed.');
     } catch (err) {
       showNotice('err', err.message || 'Delete failed');
+    } finally {
+      setDeletingId(null);
     }
   };
 
-  const startEdit = (p) => {
-    setEditing(p);
+  const startEdit = async (p) => {
+    let full = p;
+    try {
+      const detail = await caseStudiesApi.getById(p._id);
+      if (detail) full = detail;
+    } catch { /* use list row */ }
+    setEditing(full);
     const m = Array.isArray(p.metrics) && p.metrics.length ? [...p.metrics] : [emptyMetric(), emptyMetric(), emptyMetric()];
     while (m.length < 3) m.push(emptyMetric());
     setForm({
@@ -223,8 +279,8 @@ export default function AdminCaseStudies() {
             Case studies
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-neutral-400">
-            Capture client context, narrative, KPI metrics, and card imagery. List order follows the numeric order field; ties
-            break by date. Changes sync to the public site instantly.
+            Capture client context, narrative, KPI metrics, and card imagery. Published studies can be shared to all
+            institution social platforms instantly. Duplicate slugs are auto-renamed on create.
           </p>
         </div>
       </div>
@@ -292,6 +348,15 @@ export default function AdminCaseStudies() {
                 onChange={(e) => setForm({ ...form, slug: e.target.value })}
                 className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 font-mono text-sm text-white focus:border-violet-500/50 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
               />
+              {slugConflict && (
+                <p className="mt-2 text-[11px] text-amber-300/90">
+                  Slug already used by &ldquo;{slugConflict.title}&rdquo;.{' '}
+                  <button type="button" onClick={() => startEdit(slugConflict)} className="underline hover:text-amber-200">
+                    Edit existing
+                  </button>{' '}
+                  or save to auto-rename (e.g. {form.slug?.trim() || slugify(form.title)}-2).
+                </p>
+              )}
             </label>
 
             <label className="block">
@@ -494,12 +559,35 @@ export default function AdminCaseStudies() {
               <input
                 type="checkbox"
                 checked={form.published}
-                onChange={(e) => setForm({ ...form, published: e.target.checked })}
+                onChange={(e) => {
+                  const published = e.target.checked;
+                  setForm((f) => ({
+                    ...f,
+                    published,
+                    shareOnPublish: published ? f.shareOnPublish : false,
+                  }));
+                }}
                 className="h-4 w-4 rounded border-white/20 bg-black/40 text-violet-500 focus:ring-violet-500/40"
               />
               <div>
                 <span className="font-medium text-white">Published on site</span>
                 <p className="text-xs text-neutral-500">Unpublished studies stay in the admin list only.</p>
+              </div>
+            </label>
+
+            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 sm:col-span-2">
+              <input
+                type="checkbox"
+                checked={form.shareOnPublish}
+                disabled={!form.published}
+                onChange={(e) => setForm({ ...form, shareOnPublish: e.target.checked })}
+                className="h-4 w-4 rounded border-white/20 bg-black/40 text-violet-500 focus:ring-violet-500/40 disabled:opacity-40"
+              />
+              <div>
+                <span className="font-medium text-white">Share to social media after saving</span>
+                <p className="text-xs text-neutral-500">
+                  Opens the publish modal for Facebook, LinkedIn, X, WhatsApp, Telegram, Reddit, and email.
+                </p>
               </div>
             </label>
           </div>
@@ -521,19 +609,42 @@ export default function AdminCaseStudies() {
               Refresh
             </button>
           </div>
+          {loading ? (
+            <div className="flex items-center justify-center py-12 text-neutral-500">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              Loading case studies…
+            </div>
+          ) : (
           <ul className="space-y-2">
-            {items.map((p) => (
+            {items.map((p) => {
+              const isActive = editing?._id === p._id;
+              return (
               <li
                 key={p._id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] p-3"
+                className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${
+                  isActive ? 'border-[#2FA084]/50 bg-[#2FA084]/10' : 'border-white/10 bg-white/[0.04]'
+                }`}
               >
-                <div className="min-w-0">
+                {isMediaSrc(p.image) && (
+                  <img src={p.image} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover border border-white/10" />
+                )}
+                <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-white">{p.title}</p>
                   <p className="text-[11px] text-neutral-500">
-                    order {p.order ?? 0} Â· {p.published === false ? 'hidden' : 'live'}
+                    {p.slug} · order {p.order ?? 0} · {p.published === false ? 'hidden' : 'live'}
                   </p>
                 </div>
                 <div className="flex gap-1">
+                  {p.published !== false && (
+                    <button
+                      type="button"
+                      onClick={() => setShareTarget(p)}
+                      className="rounded-lg p-2 text-white/40 hover:text-sky-400 hover:bg-sky-500/10"
+                      title="Share to social media"
+                    >
+                      <Share2 className="h-4 w-4" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => startEdit(p)}
@@ -544,21 +655,34 @@ export default function AdminCaseStudies() {
                   <button
                     type="button"
                     onClick={() => remove(p._id)}
-                    className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
+                    disabled={deletingId === p._id}
+                    className="rounded-lg p-2 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    {deletingId === p._id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
                   </button>
                 </div>
               </li>
-            ))}
+            );
+            })}
           </ul>
-          {items.length === 0 && (
+          )}
+          {!loading && items.length === 0 && (
             <p className="rounded-xl border border-dashed border-white/15 p-6 text-center text-sm text-neutral-500">
               No case studies in the database yet.
             </p>
           )}
         </div>
       </div>
+
+      <CaseStudySocialShareModal
+        caseStudy={shareTarget}
+        open={Boolean(shareTarget)}
+        onClose={() => setShareTarget(null)}
+      />
     </div>
   );
 }

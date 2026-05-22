@@ -1,17 +1,29 @@
-import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import { db, COLLECTIONS, createDoc, findOne, updateDoc } from '../lib/firestoreDb.js';
 
-const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  name: { type: String, default: '' },
-  role: { type: String, enum: ['admin', 'student'], default: 'student' },
-  createdAt: { type: Date, default: Date.now },
-});
+const base = db(COLLECTIONS.users);
 
-userSchema.pre('save', async function () {
-  if (!this.isModified('password')) return;
-  this.password = await bcrypt.hash(this.password, 12);
-});
+async function hashPassword(password) {
+  return bcrypt.hash(String(password), 12);
+}
 
-export default mongoose.model('User', userSchema);
+const User = {
+  ...base,
+  async create(data) {
+    const payload = { ...data };
+    if (payload.password) {
+      payload.password = await hashPassword(payload.password);
+    }
+    return createDoc(COLLECTIONS.users, payload);
+  },
+  async findOne(filter) {
+    return findOne(COLLECTIONS.users, filter);
+  },
+  find: base.find.bind(base),
+  findById: base.findById.bind(base),
+  findByIdAndUpdate: base.findByIdAndUpdate.bind(base),
+  findByIdAndDelete: base.findByIdAndDelete.bind(base),
+  countDocuments: base.countDocuments.bind(base),
+};
+
+export default User;

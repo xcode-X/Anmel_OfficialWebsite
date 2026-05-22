@@ -1,10 +1,11 @@
-﻿import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Trash2, Quote, Star, X, RefreshCw, Image as ImageIcon,
   MessageSquare, Check,
 } from 'lucide-react';
 import { testimonialsApi } from '../../lib/api';
+import { subscribeContentStream } from '../../lib/contentStream';
 
 const ACCENT_OPTIONS = [
   { key: 'sky',    label: 'Teal',   color: '#2FA084' },
@@ -206,8 +207,6 @@ export default function AdminTestimonials() {
   const [showForm, setShowForm] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const pollRef = useRef(null);
-
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true); else setRefreshing(true);
     try { const data = await testimonialsApi.list(); setTestimonials(Array.isArray(data) ? data : []); }
@@ -217,9 +216,28 @@ export default function AdminTestimonials() {
 
   useEffect(() => {
     load();
-    pollRef.current = setInterval(() => load(true), 10000);
-    return () => clearInterval(pollRef.current);
-  }, []);
+    const cleanups = [];
+    cleanups.push(
+      testimonialsApi.subscribe((rows) => {
+        setTestimonials(rows);
+        setLoading(false);
+        setRefreshing(false);
+      }),
+    );
+    cleanups.push(
+      subscribeContentStream((resource) => {
+        if (resource === 'testimonials') load(true);
+      }),
+    );
+    const onVis = () => {
+      if (document.visibilityState === 'visible') load(true);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      cleanups.forEach((fn) => fn());
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [load]);
 
   const handleDelete = async (id) => {
     try { await testimonialsApi.delete(id); setConfirmDelete(null); load(true); }

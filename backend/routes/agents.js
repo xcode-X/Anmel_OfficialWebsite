@@ -1,10 +1,18 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import { createAdminSseRoute } from '../lib/streamRoute.js';
+import { broadcastSse } from '../lib/sse.js';
 import nodemailer from 'nodemailer';
 import Agent from '../models/Agent.js';
-import { authMiddleware, adminOnly, signToken } from '../middleware/auth.js';
-import { isDbConnected } from '../lib/dbReady.js';
+import User from '../models/User.js';
+import { authMiddleware, adminOnly, createCustomToken } from '../middleware/auth.js';
+import { isDbConnected, withDbQuery } from '../lib/dbReady.js';
+import { sendRouteError } from '../lib/asyncHandler.js';
+import { persistMediaFields, resolvePublicMediaUrl } from '../lib/fileStorage.js';
+import { AGENT_DOC_FIELDS } from '../lib/mediaFields.js';
+import { publishContentChange } from '../lib/contentStreamHub.js';
+import { updateDoc, COLLECTIONS } from '../lib/firestoreDb.js';
 
 const router = Router();
 
@@ -12,15 +20,10 @@ const router = Router();
 const listeners = new Set();
 
 function emitAgentChanged() {
-  const payload = JSON.stringify({ event: 'changed', ts: Date.now() });
-  for (const client of listeners) {
-    client.write(`data: ${payload}\n\n`);
-  }
+  broadcastSse(listeners, { event: 'changed', ts: Date.now() });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const JWT_SECRET = process.env.JWT_SECRET || 'intelera-secret-change-in-production';
-
 function generateAgentCode() {
   const random    = crypto.randomBytes(3).toString('hex').toUpperCase();
   const timestamp = Date.now().toString(36).toUpperCase().slice(-3);
@@ -44,8 +47,13 @@ function makeTransporter() {
 }
 
 async function sendApprovalEmail(agent, tempPassword, agentCode) {
+  const clientUrl = (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/$/, '');
+  const loginUrl = `${clientUrl}/agent-portal`;
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.warn('[agents] SMTP not configured — credentials email skipped');
+    return { sent: false, error: 'SMTP not configured', loginUrl };
+  }
   try {
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
     await makeTransporter().sendMail({
       from:    `"Anmel Study Abroad" <${process.env.SMTP_USER || 'noreply@anmel.com'}>`,
       to:      agent.email,
@@ -62,14 +70,15 @@ async function sendApprovalEmail(agent, tempPassword, agentCode) {
             <div style="background:rgba(100,255,218,.05);border:1px solid rgba(100,255,218,.2);border-radius:12px;padding:24px;margin:24px 0;">
               <h3 style="color:#64FFDA;margin-top:0;">🔐 Your Login Credentials</h3>
               <table style="width:100%;">
-                <tr><td style="color:#94a3b8;padding:4px 0;">Agent Code:</td><td style="color:#fff;font-weight:bold;">${agentCode}</td></tr>
+                <tr><td style="color:#94a3b8;padding:4px 0;">Login ID (username):</td><td style="color:#fff;font-weight:bold;">${agentCode}</td></tr>
                 <tr><td style="color:#94a3b8;padding:4px 0;">Email:</td><td style="color:#fff;">${agent.email}</td></tr>
                 <tr><td style="color:#94a3b8;padding:4px 0;">Temporary Password:</td><td style="color:#64FFDA;font-weight:bold;font-size:18px;">${tempPassword}</td></tr>
               </table>
             </div>
             <p style="color:#94a3b8;font-size:14px;">⚠️ Please log in and change your password immediately for security purposes.</p>
+            <p style="color:#94a3b8;font-size:14px;margin-top:16px;">Login link: <a href="${loginUrl}" style="color:#64FFDA;">${loginUrl}</a></p>
             <div style="text-align:center;margin-top:32px;">
-              <a href="${clientUrl}/agent-portal" style="background:#64FFDA;color:#0A192F;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:16px;">Access Your Agent Portal →</a>
+              <a href="${loginUrl}" style="background:#64FFDA;color:#0A192F;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:16px;">Access Your Agent Portal →</a>
             </div>
           </div>
           <div style="padding:24px;text-align:center;border-top:1px solid rgba(255,255,255,.05);color:#475569;font-size:12px;">
@@ -77,8 +86,10 @@ async function sendApprovalEmail(agent, tempPassword, agentCode) {
           </div>
         </div>`,
     });
+    return { sent: true, loginUrl };
   } catch (err) {
-    console.warn('[agents] Approval email failed (non-fatal):', err.message);
+    console.warn('[agents] Approval email failed:', err.message);
+    return { sent: false, error: err.message, loginUrl };
   }
 }
 
@@ -115,27 +126,7 @@ async function sendRejectionEmail(agent, reason) {
 }
 
 // ── SSE stream (admin only, token in query param) ─────────────────────────────
-router.get('/stream', async (req, res) => {
-  const token = req.query.token;
-  if (!token || typeof token !== 'string') return res.status(401).json({ error: 'Authentication required' });
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    if (decoded.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
-  } catch {
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders?.();
-
-  res.write(`data: ${JSON.stringify({ event: 'connected', ts: Date.now() })}\n\n`);
-  listeners.add(res);
-
-  const keepAlive = setInterval(() => res.write(`: ping ${Date.now()}\n\n`), 25000);
-  req.on('close', () => { clearInterval(keepAlive); listeners.delete(res); });
-});
+router.get('/stream', createAdminSseRoute(listeners));
 
 // ── Public: register new agent ────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
@@ -155,18 +146,36 @@ router.post('/register', async (req, res) => {
   const existing = await Agent.findOne({ email: email.toLowerCase() });
   if (existing) return res.status(409).json({ error: 'An application with this email already exists' });
 
+  const storedDocs = await persistMediaFields(
+    { passportPhoto, idDocument },
+    AGENT_DOC_FIELDS,
+    'agents',
+  );
+
+  const agentCode = generateAgentCode();
+
   const agent = await Agent.create({
     fullName, gender, dateOfBirth: new Date(dateOfBirth), nationality, countryOfResidence,
-    phone, email, residentialAddress, passportPhoto, idDocument, idDocumentType,
+    phone, email: email.toLowerCase(), residentialAddress,
+    passportPhoto: storedDocs.passportPhoto || '',
+    idDocument: storedDocs.idDocument || '',
+    idDocumentType,
     organizationName, yearsOfExperience: Number(yearsOfExperience) || 0,
     areasOfRecruitment: Array.isArray(areasOfRecruitment) ? areasOfRecruitment : [areasOfRecruitment].filter(Boolean),
     targetCountries:    Array.isArray(targetCountries)    ? targetCountries    : [targetCountries].filter(Boolean),
     studentsPerYear: Number(studentsPerYear) || 0, socialMediaLinks, referralSource,
-    personalStatement, agreedToTerms, status: 'Pending',
+    personalStatement, agreedToTerms, status: 'Pending', agentCode, loginEnabled: false,
   });
 
   emitAgentChanged();
-  res.status(201).json({ ok: true, agentId: agent._id, message: 'Application submitted successfully. You will be notified upon review.' });
+  publishContentChange('agents');
+  publishContentChange('users');
+  res.status(201).json({
+    ok: true,
+    agentId: agent._id,
+    agentCode,
+    message: 'Application submitted successfully. You will be notified upon review.',
+  });
 });
 
 // ── Agent portal: login ───────────────────────────────────────────────────────
@@ -184,12 +193,15 @@ router.post('/login', async (req, res) => {
   if (agent.status !== 'Approved') return res.status(403).json({ error: `Account status: ${agent.status}. Please wait for admin approval.` });
   if (!agent.loginEnabled) return res.status(403).json({ error: 'Login not enabled. Contact admin.' });
 
-  const valid = await agent.comparePassword(password);
+  const valid = await Agent.comparePassword(password, agent);
   if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
-  const token = signToken({
-    userId: String(agent._id), email: agent.email, role: 'agent',
-    agentCode: agent.agentCode, name: agent.fullName,
+  const token = await createCustomToken(String(agent.id || agent._id), {
+    role: 'agent',
+    agent: true,
+    email: agent.email,
+    agentCode: agent.agentCode,
+    name: agent.fullName,
   });
 
   res.json({
@@ -235,13 +247,18 @@ router.patch('/portal/change-password', authMiddleware, async (req, res) => {
 router.get('/', authMiddleware, adminOnly, async (req, res) => {
   if (!isDbConnected()) return res.status(503).json({ error: 'db_unavailable' });
   try {
-    const agents = await Agent.find()
-      .select('-password -passportPhoto -idDocument')
-      .sort({ createdAt: -1 });
+    const agents = await withDbQuery(
+      () =>
+        Agent.find()
+          .select('-password -passportPhoto -idDocument')
+          .sort({ createdAt: -1 })
+          .maxTimeMS(10000)
+          .lean(),
+      { fallback: [], label: 'agents list', timeoutMs: 12000 },
+    );
     res.json(agents);
   } catch (err) {
-    console.warn('[agents] GET list failed:', err.message);
-    res.status(503).json({ error: 'db_unavailable' });
+    return sendRouteError(res, err, { scope: 'agents/list' });
   }
 });
 
@@ -249,8 +266,10 @@ router.get('/', authMiddleware, adminOnly, async (req, res) => {
 router.get('/:id', authMiddleware, adminOnly, async (req, res) => {
   if (!isDbConnected()) return res.status(503).json({ error: 'db_unavailable' });
   try {
-    const agent = await Agent.findById(req.params.id).select('-password');
+    const agent = await Agent.findById(req.params.id).select('-password').lean();
     if (!agent) return res.status(404).json({ error: 'Agent not found' });
+    if (agent.passportPhoto) agent.passportPhoto = resolvePublicMediaUrl(req, agent.passportPhoto);
+    if (agent.idDocument) agent.idDocument = resolvePublicMediaUrl(req, agent.idDocument);
     res.json(agent);
   } catch (err) {
     res.status(503).json({ error: 'db_unavailable' });
@@ -264,23 +283,71 @@ router.patch('/:id/approve', authMiddleware, adminOnly, async (req, res) => {
   if (!agent) return res.status(404).json({ error: 'Agent not found' });
   if (agent.status === 'Approved') return res.status(400).json({ error: 'Agent is already approved' });
 
-  const agentCode   = agent.agentCode || generateAgentCode();
+  const agentCode = agent.agentCode || generateAgentCode(); // assigned at application; kept on approval
   const tempPassword = generateTempPassword();
+  const hashed = await bcrypt.hash(tempPassword, 12);
+  const agentId = String(agent.id || agent._id);
+  const approvedBy = req.auth?.email || 'admin';
 
-  agent.agentCode       = agentCode;
-  agent.temporaryPassword = tempPassword;
-  agent.password        = tempPassword;   // hashed by pre-save hook
-  agent.status          = 'Approved';
-  agent.loginEnabled    = true;
-  agent.approvedAt      = new Date();
-  agent.approvedBy      = req.user?.email || 'admin';
-  await agent.save();
+  await updateDoc(COLLECTIONS.agents, agentId, {
+    agentCode,
+    temporaryPassword: tempPassword,
+    password: hashed,
+    status: 'Approved',
+    loginEnabled: true,
+    approvedAt: new Date().toISOString(),
+    approvedBy,
+  });
 
-  // Fire-and-forget — email failure must not block the API response
-  sendApprovalEmail(agent, tempPassword, agentCode);
+  const email = String(agent.email || '').toLowerCase();
+  const existingUser = await User.findOne({ email });
+  if (!existingUser) {
+    await User.create({
+      email,
+      name: agent.fullName,
+      password: tempPassword,
+      role: 'agent',
+      agentId,
+      agentCode,
+      loginEnabled: true,
+      status: 'active',
+    });
+  } else if (existingUser.role !== 'agent') {
+    return res.status(400).json({ error: 'This email belongs to a non-agent account.' });
+  } else {
+    await User.findByIdAndUpdate(existingUser._id || existingUser.id, {
+      $set: {
+        name: agent.fullName,
+        password: await bcrypt.hash(tempPassword, 12),
+        agentCode,
+        agentId,
+        loginEnabled: true,
+        status: 'active',
+      },
+    });
+  }
+
+  const emailResult = await sendApprovalEmail(
+    { ...agent, agentCode, fullName: agent.fullName, email },
+    tempPassword,
+    agentCode,
+  );
+
   emitAgentChanged();
+  publishContentChange('agents');
+  publishContentChange('users');
 
-  res.json({ ok: true, agentCode, tempPassword, message: 'Agent approved. Credentials are being sent to their email.' });
+  res.json({
+    ok: true,
+    agentCode,
+    tempPassword,
+    loginUrl: emailResult.loginUrl,
+    emailSent: emailResult.sent,
+    emailError: emailResult.error || null,
+    message: emailResult.sent
+      ? 'Agent approved. Login link and password sent to their email.'
+      : 'Agent approved. Email could not be sent — share credentials manually.',
+  });
 });
 
 // ── Admin: reject ─────────────────────────────────────────────────────────────
@@ -299,6 +366,8 @@ router.patch('/:id/reject', authMiddleware, adminOnly, async (req, res) => {
   // Notify the agent by email (non-blocking)
   sendRejectionEmail(agent, reason);
   emitAgentChanged();
+  publishContentChange('agents');
+  publishContentChange('users');
 
   res.json({ ok: true, message: 'Agent rejected. A notification email has been sent.' });
 });

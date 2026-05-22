@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { body, validationResult } from 'express-validator';
 import Service from '../models/Service.js';
 import { authMiddleware, adminOnly, optionalAuth } from '../middleware/auth.js';
-import { isDbConnected } from '../lib/dbReady.js';
+import { isDbConnected, withDbQuery } from '../lib/dbReady.js';
 import { publishContentChange } from '../lib/contentStreamHub.js';
 
 const router = Router();
@@ -12,9 +12,11 @@ function slugify(s) {
 }
 
 router.get('/', optionalAuth, async (req, res) => {
-  if (!isDbConnected()) return res.json([]);
   const q = req.userId ? {} : { published: true };
-  const items = await Service.find(q).sort({ order: 1 }).lean();
+  const items = await withDbQuery(
+    () => Service.find(q).sort({ order: 1 }).maxTimeMS(8000).lean(),
+    { fallback: [], label: 'services list' }
+  );
   res.json(items);
 });
 

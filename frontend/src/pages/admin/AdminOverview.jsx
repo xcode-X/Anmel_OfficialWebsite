@@ -1,17 +1,21 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  BookOpen, Briefcase, ShieldCheck, Mail, ArrowRight, Plus,
-  TrendingUp, Users, GraduationCap, UserCheck, AlertTriangle,
+  BookOpen, Briefcase, Mail, ArrowRight, Plus,
+  TrendingUp, Users, GraduationCap, UserCheck, Building2, Award,
+  MessageSquareQuote, RefreshCw,
 } from 'lucide-react';
-import api, { agentsApi } from '../../lib/api';
+import { adminStatsApi, agentsApi, scholarshipApplicationsApi, EMPTY_ADMIN_STATS } from '../../lib/api';
+import { subscribeContentStream } from '../../lib/contentStream';
 import { ADMIN_BASE } from '../../lib/adminPaths';
 
 const statConfig = [
   {
     key: 'blog',
     label: 'Blog posts',
+    subKey: 'published',
+    subLabel: 'published',
     icon: BookOpen,
     to: `${ADMIN_BASE}/blog`,
     accent: '#2FA084',
@@ -28,90 +32,212 @@ const statConfig = [
     accentBorder: 'rgba(140,47,160,0.2)',
   },
   {
-    key: 'services',
-    label: 'Active services',
-    icon: ShieldCheck,
-    to: `${ADMIN_BASE}/services`,
-    accent: '#F59E0B',
-    accentBg: 'rgba(245,158,11,0.12)',
-    accentBorder: 'rgba(245,158,11,0.2)',
-  },
-  {
     key: 'contacts',
-    label: 'Contact submissions',
+    label: 'Contact messages',
+    subKey: 'unread',
+    subLabel: 'unread',
+    alertSub: true,
     icon: Mail,
     to: `${ADMIN_BASE}/contacts`,
     accent: '#E04A6F',
     accentBg: 'rgba(224,74,111,0.12)',
     accentBorder: 'rgba(224,74,111,0.2)',
   },
+  {
+    key: 'students',
+    label: 'Scholarship applications',
+    subKey: 'pending',
+    subLabel: 'pending review',
+    alertSub: true,
+    icon: UserCheck,
+    to: `${ADMIN_BASE}/students`,
+    accent: '#0EA5E9',
+    accentBg: 'rgba(14,165,233,0.12)',
+    accentBorder: 'rgba(14,165,233,0.2)',
+  },
+  {
+    key: 'scholarships',
+    label: 'Scholarships',
+    subKey: 'live',
+    subLabel: 'live on site',
+    icon: Award,
+    to: `${ADMIN_BASE}/scholarships`,
+    accent: '#F97316',
+    accentBg: 'rgba(249,115,22,0.12)',
+    accentBorder: 'rgba(249,115,22,0.2)',
+  },
+  {
+    key: 'universities',
+    label: 'Partner universities',
+    icon: Building2,
+    to: `${ADMIN_BASE}/universities`,
+    accent: '#6366F1',
+    accentBg: 'rgba(99,102,241,0.12)',
+    accentBorder: 'rgba(99,102,241,0.2)',
+  },
+  {
+    key: 'agents',
+    label: 'Registered agents',
+    subKey: 'pending',
+    subLabel: 'pending approval',
+    alertSub: true,
+    icon: Users,
+    to: `${ADMIN_BASE}/agents`,
+    accent: '#A855F7',
+    accentBg: 'rgba(168,85,247,0.12)',
+    accentBorder: 'rgba(168,85,247,0.2)',
+  },
+  {
+    key: 'testimonials',
+    label: 'Testimonials',
+    icon: MessageSquareQuote,
+    to: `${ADMIN_BASE}/testimonials`,
+    accent: '#14B8A6',
+    accentBg: 'rgba(20,184,166,0.12)',
+    accentBorder: 'rgba(20,184,166,0.2)',
+  },
 ];
 
 const quickActions = [
   { to: `${ADMIN_BASE}/blog`,         label: 'New blog post',       icon: BookOpen,    hint: 'Publish an article' },
   { to: `${ADMIN_BASE}/case-studies`, label: 'New case study',      icon: Briefcase,   hint: 'Add a portfolio item' },
-  { to: `${ADMIN_BASE}/services`,     label: 'Update services',     icon: ShieldCheck, hint: 'Edit service offerings' },
-  { to: `${ADMIN_BASE}/students`,     label: 'Student intake',      icon: UserCheck,   hint: 'Process applications' },
+  { to: `${ADMIN_BASE}/scholarships/new`, label: 'Add scholarship', icon: Award,       hint: 'Publish a funding listing' },
+  { to: `${ADMIN_BASE}/students`,     label: 'Scholarship application', icon: UserCheck,   hint: 'Review scholarship applicants' },
+  { to: `${ADMIN_BASE}/intern-applications`, label: 'Intern application', icon: UserCheck, hint: 'Academy program applicants' },
   { to: `${ADMIN_BASE}/lms`,          label: 'LMS content',         icon: GraduationCap, hint: 'Manage courses' },
   { to: `${ADMIN_BASE}/contacts`,     label: 'View enquiries',      icon: Mail,        hint: 'Respond to messages' },
 ];
 
-const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
-const card = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } };
+const STREAM_RESOURCES = new Set([
+  'blog', 'case-studies', 'scholarships', 'scholarship-applications', 'universities', 'testimonials', 'contacts', 'students',
+]);
+
+const STATS_CACHE_KEY = 'anmel_admin_stats_v1';
+
+function readCachedStats() {
+  try {
+    const raw = sessionStorage.getItem(STATS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed.blog?.total === 'number' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedStats(data) {
+  try {
+    sessionStorage.setItem(STATS_CACHE_KEY, JSON.stringify(data));
+  } catch { /* quota / private mode */ }
+}
+
+const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.04 } } };
+const card = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } };
+
+function getStatValue(stats, key) {
+  const block = stats?.[key];
+  if (!block || typeof block.total !== 'number') return null;
+  return block.total;
+}
+
+function getStatSub(stats, key, subKey) {
+  const block = stats?.[key];
+  if (!block || typeof block[subKey] !== 'number') return null;
+  return block[subKey];
+}
 
 export default function AdminOverview() {
-  const [stats, setStats] = useState({ blog: null, caseStudies: null, services: null, contacts: null });
-  const [unread, setUnread] = useState(0);
-  const [pendingAgents, setPendingAgents] = useState(0);
+  const [stats, setStats] = useState(() => readCachedStats() || { ...EMPTY_ADMIN_STATS });
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(() => readCachedStats()?.updatedAt ?? null);
 
-  useEffect(() => {
-    Promise.all([
-      api.get('/blog').catch(() => []),
-      api.get('/case-studies').catch(() => []),
-      api.get('/services').catch(() => []),
-      api.get('/contact').catch(() => []),
-      agentsApi.adminList().catch(() => []),
-    ]).then(([blog, caseStudies, services, contacts, agents]) => {
-      setStats({
-        blog: blog.length,
-        caseStudies: caseStudies.length,
-        services: services.length,
-        contacts: contacts.length,
-      });
-      setUnread(contacts.filter((c) => !c.read).length);
-      setPendingAgents(agents.filter((a) => a.status === 'Pending').length);
-    });
+  const loadStats = useCallback(async (quiet = false) => {
+    if (!quiet) setRefreshing(true);
+    try {
+      const data = await adminStatsApi.get();
+      setStats(data);
+      setLastUpdated(data.updatedAt || Date.now());
+      writeCachedStats(data);
+    } catch {
+      setStats((prev) => prev || { ...EMPTY_ADMIN_STATS, updatedAt: Date.now() });
+      setLastUpdated(Date.now());
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
 
-  return (
-    <div className="max-w-5xl space-y-10">
+  useEffect(() => {
+    loadStats();
 
-      {/* â”€â”€ Page header â”€â”€ */}
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#2FA084] mb-1">Admin</p>
-        <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'var(--font-display)' }}>
-          Dashboard Overview
-        </h1>
-        <p className="mt-1 text-sm text-white/40">
-          Monitor your platform at a glance and take quick actions.
-        </p>
+    const cleanupStream = subscribeContentStream((resource) => {
+      if (STREAM_RESOURCES.has(resource)) loadStats(true);
+    });
+
+    const cleanupStudents = scholarshipApplicationsApi.subscribe(() => loadStats(true));
+    const cleanupAgents = agentsApi.subscribe(() => loadStats(true));
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible') loadStats(true);
+    };
+    document.addEventListener('visibilitychange', onVis);
+
+    return () => {
+      cleanupStream();
+      cleanupStudents();
+      cleanupAgents();
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [loadStats]);
+
+  const unread = stats?.contacts?.unread ?? 0;
+  const pendingAgents = stats?.agents?.pending ?? 0;
+  const pendingStudents = stats?.students?.pending ?? 0;
+
+  return (
+    <div className="max-w-6xl space-y-10">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#2FA084] mb-1">Admin</p>
+          <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'var(--font-display)' }}>
+            Dashboard Overview
+          </h1>
+          <p className="mt-1 text-sm text-white/40">
+            Live counts across your platform — updates automatically when data changes.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => loadStats()}
+          disabled={refreshing}
+          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/60 hover:text-white hover:bg-white/10 transition disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
       </div>
 
-      {/* â”€â”€ Stat cards â”€â”€ */}
+      {lastUpdated && (
+        <p className="text-xs text-white/30 -mt-6">
+          Last updated {new Date(lastUpdated).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' })}
+        </p>
+      )}
+
       <motion.div
         variants={container}
         initial="hidden"
         animate="show"
-        className="grid grid-cols-2 lg:grid-cols-4 gap-4"
+        className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
       >
         {statConfig.map((s) => {
           const Icon = s.icon;
-          const value = stats[s.key];
+          const value = getStatValue(stats, s.key);
+          const subValue = s.subKey ? getStatSub(stats, s.key, s.subKey) : null;
+
           return (
-            <motion.div key={s.key} variants={card} transition={{ type: 'spring', stiffness: 160, damping: 22 }}>
+            <motion.div key={s.key} variants={card} transition={{ type: 'spring', stiffness: 180, damping: 24 }}>
               <Link
                 to={s.to}
-                className="group block rounded-2xl border p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+                className="group block rounded-2xl border p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg h-full"
                 style={{
                   backgroundColor: s.accentBg,
                   borderColor: s.accentBorder,
@@ -125,13 +251,16 @@ export default function AdminOverview() {
                 </div>
                 <p className="text-white/50 text-xs font-medium mb-1">{s.label}</p>
                 <p
-                  className="text-3xl font-bold tabular-nums"
-                  style={{ fontFamily: 'var(--font-display)', color: value === null ? 'transparent' : 'white' }}
+                  className="text-3xl font-bold tabular-nums text-white"
+                  style={{ fontFamily: 'var(--font-display)' }}
                 >
-                  {value === null ? (
-                    <span className="inline-block h-8 w-10 rounded-md animate-pulse bg-white/10" />
-                  ) : value}
+                  {value ?? 0}
                 </p>
+                {s.subKey && subValue !== null && (
+                  <p className={`mt-1.5 text-xs font-medium ${s.alertSub && subValue > 0 ? 'text-amber-300' : 'text-white/40'}`}>
+                    {subValue} {s.subLabel}
+                  </p>
+                )}
                 <div
                   className="mt-3 flex items-center gap-1 text-xs font-semibold opacity-70 group-hover:opacity-100 transition-opacity"
                   style={{ color: s.accent }}
@@ -145,7 +274,6 @@ export default function AdminOverview() {
         })}
       </motion.div>
 
-      {/* â”€â”€ Unread alert â”€â”€ */}
       {unread > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -173,7 +301,33 @@ export default function AdminOverview() {
         </motion.div>
       )}
 
-      {/* Pending agents alert */}
+      {pendingStudents > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center justify-between gap-4 rounded-2xl border border-sky-500/20 bg-sky-500/8 px-5 py-4"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-sky-500/15 flex items-center justify-center">
+              <UserCheck className="w-4 h-4 text-sky-400" strokeWidth={2} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">
+                {pendingStudents} scholarship application{pendingStudents > 1 ? 's' : ''} awaiting review
+              </p>
+              <p className="text-xs text-white/40">Submissions from public scholarship listings</p>
+            </div>
+          </div>
+          <Link
+            to={`${ADMIN_BASE}/students`}
+            className="shrink-0 flex items-center gap-1.5 text-xs font-semibold text-sky-400 hover:text-sky-300 transition-colors"
+          >
+            Review applications
+            <ArrowRight className="w-3.5 h-3.5" strokeWidth={2.5} />
+          </Link>
+        </motion.div>
+      )}
+
       {pendingAgents > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -188,7 +342,7 @@ export default function AdminOverview() {
               <p className="text-sm font-semibold text-white">
                 {pendingAgents} agent application{pendingAgents > 1 ? 's' : ''} pending review
               </p>
-              <p className="text-xs text-white/40">New agents registered — approve to send them login credentials</p>
+              <p className="text-xs text-white/40">Approve agents to send them login credentials</p>
             </div>
           </div>
           <Link
@@ -201,7 +355,6 @@ export default function AdminOverview() {
         </motion.div>
       )}
 
-      {/* â”€â”€ Quick actions â”€â”€ */}
       <div>
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp className="w-4 h-4 text-white/30" strokeWidth={1.8} />
@@ -216,7 +369,7 @@ export default function AdminOverview() {
                 key={action.to}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 + i * 0.05, type: 'spring', stiffness: 160 }}
+                transition={{ delay: 0.15 + i * 0.04, type: 'spring', stiffness: 160 }}
               >
                 <Link
                   to={action.to}
@@ -239,24 +392,19 @@ export default function AdminOverview() {
         </div>
       </div>
 
-      {/* â”€â”€ System status bar â”€â”€ */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.5 }}
+        transition={{ delay: 0.4 }}
         className="flex flex-wrap items-center gap-4 rounded-2xl border border-white/6 bg-white/2 px-5 py-4"
       >
         <div className="flex items-center gap-2 text-xs text-white/40">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          Backend API connected
-        </div>
-        <div className="flex items-center gap-2 text-xs text-white/40">
-          <span className="w-2 h-2 rounded-full bg-amber-400" />
-          MongoDB optional
+          Live dashboard sync active
         </div>
         <div className="flex items-center gap-2 text-xs text-white/40">
           <span className="w-2 h-2 rounded-full bg-[#2FA084]" />
-          Anmel Inc Admin v2
+          Anmel Inc Admin
         </div>
         <Link
           to={`${ADMIN_BASE}/settings`}
@@ -269,5 +417,3 @@ export default function AdminOverview() {
     </div>
   );
 }
-
-

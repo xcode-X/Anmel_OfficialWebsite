@@ -1,105 +1,168 @@
 ﻿import { Router } from 'express';
 import { body, validationResult } from 'express-validator';
 import bcrypt from 'bcryptjs';
-import mongoose from 'mongoose';
-import jwt from 'jsonwebtoken';
+import { getAuth } from '../config/firebase.js';
 import User from '../models/User.js';
-import { authMiddleware, adminOnly, signToken } from '../middleware/auth.js';
+import { authMiddleware, adminOnly, verifyFirebaseToken, createCustomToken } from '../middleware/auth.js';
+import { isDbConnected, withDbQuery } from '../lib/dbReady.js';
+import { createDoc, COLLECTIONS, findOne } from '../lib/firestoreDb.js';
+import { publishContentChange } from '../lib/contentStreamHub.js';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'anmelinc-secret-change-in-production';
+
+async function ensureFirebaseAdminUser(email, password, { name = 'Admin', role = 'admin' } = {}) {
+  const auth = getAuth();
+  let firebaseUser;
+  try {
+    firebaseUser = await auth.getUserByEmail(email);
+  } catch (e) {
+    if (e.code !== 'auth/user-not-found') throw e;
+    firebaseUser = await auth.createUser({ email, password, displayName: name });
+  }
+  await auth.setCustomUserClaims(firebaseUser.uid, { role, admin: role === 'admin' });
+  let profile = await findOne(COLLECTIONS.users, { email });
+  if (!profile) {
+    profile = await createDoc(COLLECTIONS.users, {
+      email,
+      name,
+      role,
+      password: await bcrypt.hash(password, 12),
+      firebaseUid: firebaseUser.uid,
+    });
+  }
+  return { firebaseUser, profile };
+}
+
+async function signInWithPassword(email, password) {
+  const apiKey = process.env.FIREBASE_WEB_API_KEY?.trim();
+  if (!apiKey) {
+    const err = new Error('FIREBASE_WEB_API_KEY is required for email/password login');
+    err.status = 503;
+    throw err;
+  }
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    },
+  );
+  const data = await res.json();
+  if (!res.ok) {
+    const err = new Error(data.error?.message || 'Invalid credentials');
+    err.status = 401;
+    throw err;
+  }
+  return data;
+}
 
 router.post('/login',
-  body('email').isEmail().normalizeEmail(),
-  body('password').notEmpty(),
+  body('email').optional().isEmail().normalizeEmail(),
+  body('password').optional(),
+  body('idToken').optional(),
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-    const email = String(req.body.email || '').trim().toLowerCase();
-    const password = String(req.body.password || '');
-    const demoEmail = (process.env.DEMO_ADMIN_EMAIL || 'demo.admin@anmelinc.com').toLowerCase();
-    const demoPassword = process.env.DEMO_ADMIN_PASSWORD || 'DemoAdmin@123';
-    const seededAdminEmail = (process.env.ADMIN_EMAIL || 'admin@anmelinc.com').toLowerCase();
-    const seededAdminPassword = process.env.ADMIN_PASSWORD || 'admin123';
 
-    if (email.toLowerCase() === demoEmail && password === demoPassword) {
-      try {
-        let demoUser = await User.findOne({ email: demoEmail });
-        if (!demoUser) {
-          demoUser = await User.create({
-            email: demoEmail,
-            password: demoPassword,
-            name: 'Demo Admin',
-            role: 'admin',
-          });
-        }
-        const token = signToken({
-          userId: String(demoUser._id),
-          email: demoUser.email,
-          role: 'admin',
-          name: demoUser.name || 'Demo Admin',
+    try {
+      if (req.body.idToken) {
+        const decoded = await verifyFirebaseToken(req.body.idToken);
+        const profile = await User.findById(decoded.uid) || await User.findOne({ email: decoded.email });
+        return res.json({
+          token: req.body.idToken,
+          user: {
+            id: decoded.uid,
+            email: decoded.email || profile?.email,
+            role: decoded.role || profile?.role || 'admin',
+            name: decoded.name || profile?.name || 'Admin',
+          },
         });
-        return res.json({ token, user: { id: demoUser._id, email: demoUser.email, role: demoUser.role } });
-      } catch {
-        const token = signToken({
-          userId: 'demo-admin',
-          email: demoEmail,
-          role: 'admin',
-          name: 'Demo Admin',
-        });
-        return res.json({ token, user: { id: 'demo-admin', email: demoEmail, role: 'admin' } });
       }
-    }
 
-    // Allow temporary admin access when database is offline.
-    if (mongoose.connection.readyState !== 1) {
-      if ((email === seededAdminEmail && password === seededAdminPassword) || (email === demoEmail && password === demoPassword)) {
-        const token = signToken({
-          userId: 'offline-admin',
+      const email = String(req.body.email || '').trim().toLowerCase();
+      const password = String(req.body.password || '');
+      const demoEmail = (process.env.DEMO_ADMIN_EMAIL || 'demo.admin@anmelinc.com').toLowerCase();
+      const demoPassword = process.env.DEMO_ADMIN_PASSWORD || 'DemoAdmin@123';
+
+      if (email === demoEmail && password === demoPassword && isDbConnected()) {
+        try {
+          await ensureFirebaseAdminUser(demoEmail, demoPassword, { name: 'Demo Admin', role: 'admin' });
+        } catch { /* Admin SDK optional */ }
+      }
+
+      const signIn = await signInWithPassword(email, password);
+      const decoded = await verifyFirebaseToken(signIn.idToken);
+
+      let profile = null;
+      if (isDbConnected()) {
+        profile = await User.findOne({ email }) || await User.findById(decoded.uid);
+      }
+      if (!profile) {
+        const { fetchUserProfileViaRest } = await import('../lib/firebaseRestAuth.js');
+        profile = await fetchUserProfileViaRest(decoded.uid, signIn.idToken);
+      }
+
+      const isAdmin =
+        decoded.role === 'admin' ||
+        decoded.admin ||
+        profile?.role === 'admin';
+      if (!isAdmin) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+      return res.json({
+        token: signIn.idToken,
+        user: {
+          id: signIn.localId || decoded.uid,
           email,
           role: 'admin',
-          name: 'Offline Admin',
-        });
-        return res.json({ token, user: { id: 'offline-admin', email, role: 'admin' } });
-      }
-      return res.status(401).json({ error: 'Invalid credentials. Use demo.admin@anmelinc.com / DemoAdmin@123 while database is offline.' });
+          name: profile?.name || signIn.displayName || 'Admin',
+        },
+      });
+    } catch (err) {
+      const status = err.status || 401;
+      return res.status(status).json({ error: err.message || 'Login failed' });
     }
-
-    const user = await User.findOne({ email });
-    if (!user || user.role !== 'admin') return res.status(401).json({ error: 'Invalid credentials' });
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
-    const token = signToken({ userId: String(user._id), email: user.email, role: user.role, name: user.name || '' });
-    res.json({ token, user: { id: user._id, email: user.email, role: user.role } });
-  }
+  },
 );
 
 router.post('/register-admin',
-  body('name').trim().notEmpty().withMessage('Name is required'),
-  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  body('name').trim().notEmpty(),
+  body('email').isEmail().normalizeEmail(),
+  body('password').isLength({ min: 8 }),
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ error: errors.array()[0].msg });
+    if (!isDbConnected()) return res.status(503).json({ error: 'Database unavailable' });
 
     const { name, email, password } = req.body;
-
-    if (mongoose.connection.readyState !== 1) {
-      return res.status(503).json({ error: 'Database unavailable. Cannot register new admin at this time.' });
-    }
-
-    const existing = await User.findOne({ email: email.toLowerCase() });
+    const normalized = email.toLowerCase();
+    const existing = await User.findOne({ email: normalized });
     if (existing) return res.status(409).json({ error: 'An account with this email already exists.' });
 
-    const user = await User.create({ name, email, password, role: 'admin' });
-    const token = signToken({ userId: String(user._id), email: user.email, role: 'admin', name: user.name });
-    res.status(201).json({ token, user: { id: user._id, email: user.email, role: user.role, name: user.name } });
-  }
+    const { firebaseUser, profile } = await ensureFirebaseAdminUser(normalized, password, { name, role: 'admin' });
+    const signIn = await signInWithPassword(normalized, password);
+    publishContentChange('users');
+    res.status(201).json({
+      token: signIn.idToken,
+      user: { id: firebaseUser.uid, email: normalized, role: 'admin', name: profile.name || name },
+    });
+  },
 );
 
-
-router.get('/me', authMiddleware, adminOnly, async (req, res) => {
-  res.json({ user: req.user });
+router.get('/me', authMiddleware, async (req, res) => {
+  try {
+    return res.json({
+      user: {
+        id: req.userId,
+        email: req.auth.email,
+        role: req.auth.role || 'admin',
+        name: req.auth.name || 'Admin',
+      },
+    });
+  } catch (err) {
+    return res.status(401).json({ error: 'Session expired. Please sign in again.' });
+  }
 });
 
 router.patch('/password', authMiddleware, adminOnly,
@@ -108,15 +171,19 @@ router.patch('/password', authMiddleware, adminOnly,
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-    const { currentPassword, newPassword } = req.body;
-    const user = await User.findById(req.userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    const valid = await bcrypt.compare(currentPassword, user.password);
-    if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
-    user.password = await bcrypt.hash(newPassword, 12);
-    await user.save();
-    res.json({ message: 'Password updated successfully' });
-  }
+    try {
+      const email = req.auth.email;
+      await signInWithPassword(email, req.body.currentPassword);
+      await getAuth().updateUser(req.userId, { password: req.body.newPassword });
+      const user = await User.findById(req.userId);
+      if (user) {
+        await User.findByIdAndUpdate(req.userId, { password: await bcrypt.hash(req.body.newPassword, 12) });
+      }
+      res.json({ message: 'Password updated successfully' });
+    } catch (err) {
+      res.status(401).json({ error: err.message || 'Current password is incorrect' });
+    }
+  },
 );
 
 router.post('/student/activate',
@@ -125,25 +192,18 @@ router.post('/student/activate',
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-    const { token, newPassword } = req.body;
-    let decoded;
     try {
-      decoded = jwt.verify(token, JWT_SECRET);
+      const decoded = await verifyFirebaseToken(req.body.token);
+      if (decoded.role !== 'student') {
+        return res.status(400).json({ error: 'Invalid activation token' });
+      }
+      await getAuth().updateUser(decoded.uid, { password: req.body.newPassword });
+      await User.findByIdAndUpdate(decoded.uid, { password: await bcrypt.hash(req.body.newPassword, 12) });
+      return res.json({ activated: true });
     } catch {
       return res.status(401).json({ error: 'Activation link is invalid or expired' });
     }
-
-    if (decoded.purpose !== 'student-activate' || decoded.role !== 'student') {
-      return res.status(400).json({ error: 'Invalid activation token' });
-    }
-
-    const user = await User.findById(decoded.userId);
-    if (!user || user.role !== 'student') return res.status(404).json({ error: 'Student account not found' });
-    user.password = newPassword;
-    await user.save();
-    return res.json({ activated: true });
-  }
+  },
 );
 
 export default router;

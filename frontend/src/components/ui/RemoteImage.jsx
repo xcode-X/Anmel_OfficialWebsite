@@ -24,6 +24,8 @@ export default function RemoteImage({ src, alt, fallbackSeed = 'intelera', class
       referrerPolicy="no-referrer"
       onError={(e) => {
         onErrorProp?.(e);
+        // Keep uploaded base64/blob images — do not swap for a random stock photo
+        if (uri?.startsWith('data:') || uri?.startsWith('blob:')) return;
         setUri((u) => (u.startsWith('https://picsum.photos') ? u : fallback(fallbackSeed)));
       }}
     />

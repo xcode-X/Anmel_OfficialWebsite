@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import api from '../lib/api';
+import { contactApi } from '../lib/api';
 import { contactImage } from '../lib/siteImages';
 import RemoteImage from '../components/ui/RemoteImage';
 import MonroviaMap from '../components/lead/MonroviaMap';
@@ -20,7 +20,7 @@ export default function Contact() {
     setStatus('sending');
     setErrorMessage('');
     try {
-      await api.post('/contact', form);
+      await contactApi.submit(form);
       setStatus('success');
       setForm({ name: '', email: '', company: '', phone: '', subject: '', message: '' });
     } catch (err) {

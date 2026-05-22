@@ -1,4 +1,6 @@
-/** SSE fan-out for public pages to refetch when CMS content changes (blog, case studies, services). */
+/** Content change notifications — Firestore meta doc + legacy SSE fan-out. */
+import { bumpRealtime } from './firestoreDb.js';
+
 const listeners = new Set();
 
 export function registerContentStreamClient(res) {
@@ -6,8 +8,9 @@ export function registerContentStreamClient(res) {
   res.on('close', () => listeners.delete(res));
 }
 
-export function publishContentChange(resource) {
-  const payload = JSON.stringify({ resource, ts: Date.now() });
+export function publishContentChange(resource, meta = {}) {
+  bumpRealtime(resource, meta);
+  const payload = JSON.stringify({ resource, ...meta, ts: Date.now() });
   const line = `data: ${payload}\n\n`;
   for (const client of [...listeners]) {
     try {

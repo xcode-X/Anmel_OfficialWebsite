@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { Outlet } from 'react-router-dom';
+import { usePageChrome } from '../../context/AppContext';
 import Nav from './Nav';
 import Footer from './Footer';
 import ScrollProgress from './ScrollProgress';
@@ -25,6 +26,8 @@ function PageSkeleton() {
 }
 
 export default function MainLayout() {
+  const { hideFooter, hideFloatingUi } = usePageChrome();
+
   return (
     <>
       <MousePattern />
@@ -35,9 +38,9 @@ export default function MainLayout() {
           <Outlet />
         </Suspense>
       </main>
-      <Footer />
-      <StickyCTA />
-      <ExitIntentPopup />
+      {!hideFooter && <Footer />}
+      {!hideFloatingUi && <StickyCTA />}
+      {!hideFloatingUi && <ExitIntentPopup />}
     </>
   );
 }
