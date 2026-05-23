@@ -994,57 +994,181 @@ export const universitiesApi = {
       .then((r) => (r.ok ? r.json() : { image: null }))
       .catch(() => ({ image: null }));
   },
+
   lookup: async (url) => {
     const normalized = String(url || '').trim();
     const firstUrl = normalized.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || normalized;
     const path = `/universities/lookup?url=${encodeURIComponent(firstUrl)}`;
     const apiUrl = path.startsWith('http') ? path : `${API}${path}`;
 
-    // ── Client-side fallback: microlink.io + Wikipedia (no backend, no API key) ──
-    async function clientSideLookup() {
+    // ── Shared HTML parsing helpers ───────────────────────────────────────────
+    function htmlToText(html) {
+      return html
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&')
+        .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+        .replace(/\s+/g, ' ').trim();
+    }
+    function decodeEnt(s) {
+      return s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'");
+    }
+    function extractMeta(html) {
+      const get = (patterns) => { for (const p of patterns) { const m = html.match(p); if (m?.[1]) return decodeEnt(m[1].trim()); } return ''; };
+      return {
+        title: get([/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i, /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i, /<title[^>]*>([^<]{2,120})<\/title>/i]),
+        description: get([/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i, /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i, /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i]),
+        image: get([/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i, /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i]),
+      };
+    }
+    function inferLevel(t) {
+      const s = t.toLowerCase();
+      if (/\b(ph\.?d|doctorate|doctoral|doctor of philosophy)\b/.test(s)) return 'PhD';
+      if (/\b(diploma|h\.?n\.?d|associate degree)\b/.test(s)) return 'Diploma';
+      if (/\b(certificate|short course)\b/.test(s) && !/master|postgrad/.test(s)) return 'Certificate';
+      if (/\b(foundation year|foundation programme|pathway|preparatory)\b/.test(s)) return 'Foundation';
+      if (/\b(undergraduate|bachelor|b\.?sc|b\.?a\b|b\.?eng|llb|mbbs|b\.?com|b\.?tech)\b/.test(s)) return 'Undergraduate';
+      if (/\b(postgraduate|master'?s?|m\.?sc|m\.?a\b|mba|llm|m\.?phil)\b/.test(s)) return "Master's";
+      return 'Undergraduate';
+    }
+    function dur(lvl) { return {'PhD':'3–4 Years',"Master's":'1–2 Years','Diploma':'1–2 Years','Certificate':'6–12 Months','Foundation':'1 Year'}[lvl]||'3 Years'; }
+    function parseCourses(text) {
+      const found = new Set(); const results = [];
+      const add = (name, hint='') => {
+        const clean = name.replace(/\s+/g,' ').trim();
+        const key = clean.toLowerCase();
+        if (found.has(key)||clean.length<4||clean.length>90) return;
+        found.add(key);
+        const lvl = inferLevel(clean+' '+hint);
+        results.push({ name: clean, level: lvl, duration: dur(lvl) });
+      };
+      for (const [,r] of text.matchAll(/\bBachelor of ([\w][\w\s/&-]{2,45}?)(?=[,()\n]|$)/gi)) add(`Bachelor of ${r.trim()}`,'Undergraduate');
+      for (const [,r] of text.matchAll(/\bMaster of ([\w][\w\s/&-]{2,45}?)(?=[,()\n]|$)/gi)) add(`Master of ${r.trim()}`,"Master's");
+      for (const [,r] of text.matchAll(/\bDoctor of ([\w][\w\s/&-]{2,40}?)(?=[,()\n]|$)/gi)) add(`Doctor of ${r.trim()}`,'PhD');
+      for (const [,r] of text.matchAll(/\bPh\.?D\.?\s*(?:in|of)?\s*([\w][\w\s/&-]{2,40}?)(?=[,()\n]|$)/gi)) add(`PhD in ${r.trim()}`,'PhD');
+      for (const [,r] of text.matchAll(/\bM\.?Sc\.?\s*(?:in|of)?\s*([\w][\w\s/&-]{2,40}?)(?=[,()\n]|$)/gi)) add(`MSc in ${r.trim()}`,"Master's");
+      for (const [,r] of text.matchAll(/\bB\.?Sc\.?\s*(?:in|of)?\s*([\w][\w\s/&-]{2,40}?)(?=[,()\n]|$)/gi)) add(`BSc in ${r.trim()}`,'Undergraduate');
+      for (const [,r] of text.matchAll(/\bDiploma (?:in|of)?\s*([\w][\w\s/&-]{2,40}?)(?=[,()\n]|$)/gi)) add(`Diploma in ${r.trim()}`,'Diploma');
+      for (const [,r] of text.matchAll(/\bFoundation (?:in|of)?\s*([\w][\w\s/&-]{2,35}?)(?=[,()\n]|$)/gi)) add(`Foundation in ${r.trim()}`,'Foundation');
+      for (const [,r] of text.matchAll(/\bCertificate (?:in|of)?\s*([\w][\w\s/&-]{2,35}?)(?=[,()\n]|$)/gi)) add(`Certificate in ${r.trim()}`,'Certificate');
+      if (/\bMBA\b/i.test(text)) add('MBA (Master of Business Administration)',"Master's");
+      if (/\bMBBS\b/i.test(text)) add('MBBS','Undergraduate');
+      if (/\bLLB\b/i.test(text)) add('LLB (Bachelor of Laws)','Undergraduate');
+      if (/\bLLM\b/i.test(text)) add('LLM (Master of Laws)',"Master's");
+      if (/\bBEng\b/i.test(text)) add('BEng (Bachelor of Engineering)','Undergraduate');
+      if (/\bMEng\b/i.test(text)) add('MEng (Master of Engineering)',"Master's");
+      for (const [,area] of text.matchAll(/\b(?:School|Faculty|College|Department|Institute) of ([\w][\w\s/&-]{2,40}?)(?=[,()\n<]|$)/gi)) add(`${area.trim()} (Faculty pathway)`,'Undergraduate');
+      // JSON-LD structured data
+      for (const [,block] of text.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+        try {
+          const nodes = [].concat(JSON.parse(block));
+          for (const n of nodes) {
+            if (n['@type']==='Course'||n['@type']==='EducationalOccupationalProgram') {
+              const nm = n.name||n.title; if (nm) { const lvl = inferLevel(String(nm)+' '+(n.educationalLevel||'')); add(String(nm).trim(), lvl); }
+            }
+          }
+        } catch { /**/ }
+      }
+      return results.slice(0, 40);
+    }
+    function extractStats(text) {
+      const founded = text.match(/(?:founded|established|chartered|opened|since)\s+(?:in\s+)?(\d{4})/i)?.[1] || '';
+      const sm = text.match(/([\d,]+)\s*\+?\s*(?:full[- ]time\s+)?(?:students|undergraduates|enrol)/i) || text.match(/student population[:\s]+([\d,]+)/i);
+      const students = sm ? sm[1].replace(/,/g,'')+'+'  : '';
+      const cm = text.match(/(?:located in|based in|situated in|university in|college in)\s+([A-Z][a-zA-Z\s]{2,30}?)(?:[,.\n]|$)/i);
+      const country = cm ? cm[1].trim() : '';
+      const dm = text.match(/^([^.!?]{40,280}[.!?])/);
+      return { founded, students, country, description: dm?.[1]?.trim() || '' };
+    }
+    function discoverProgUrls(html, base) {
+      const RE = /program|programme|course|study|studies|degree|academic|facult|school-of|admission|undergrad|postgrad|graduate|diploma|phd|master|bachelor/i;
+      const origin = new URL(base).origin;
+      const seen = new Set(); const scored = [];
+      for (const m of html.matchAll(/<a[^>]+href=["']([^"'#?][^"']*?)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+        try {
+          const abs = new URL(m[1].trim(), base).href;
+          if (!abs.startsWith(origin)||seen.has(abs)) continue;
+          const path = new URL(abs).pathname;
+          if (!RE.test(path)&&!RE.test(htmlToText(m[2]))) continue;
+          seen.add(abs);
+          const score = /program|programme|course/i.test(path)?3:/undergrad|postgrad|degree/i.test(path)?2:1;
+          scored.push({ url: abs, score });
+        } catch {/**/}
+      }
+      return scored.sort((a,b)=>b.score-a.score).slice(0,3).map(s=>s.url);
+    }
+
+    // ── Full client-side scraper via allorigins.win CORS proxy ────────────────
+    async function clientSideScraper() {
+      async function fetchHtml(targetUrl) {
+        // Try allorigins.win first, then corsproxy.io as fallback
+        const proxies = [
+          `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
+          `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
+        ];
+        for (const proxyUrl of proxies) {
+          try {
+            const r = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+            if (!r.ok) continue;
+            const ct = r.headers.get('content-type') || '';
+            if (ct.includes('application/json')) {
+              const j = await r.json();
+              if (j?.contents) return j.contents;
+            } else {
+              return await r.text();
+            }
+          } catch {/**/ }
+        }
+        return null;
+      }
+
       try {
-        // Step 1: microlink.io — extracts title, description, image from any URL
-        const mlRes = await fetch(
-          `https://api.microlink.io/?url=${encodeURIComponent(firstUrl)}&palette=false&audio=false&video=false&iframe=false`,
-          { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(12000) },
-        );
-        if (!mlRes.ok) return null;
-        const ml = await mlRes.json();
-        if (ml.status !== 'success') return null;
+        const html = await fetchHtml(firstUrl);
+        if (!html) return null;
 
-        const rawTitle = ml.data?.title || '';
-        // Clean title: strip "| University Name" suffixes
-        const name = rawTitle.replace(/\s*[|–\-—:]\s*.{0,60}$/, '').trim() || rawTitle.trim();
-        const description = (ml.data?.description || '').slice(0, 400);
-        const image = ml.data?.image?.url || ml.data?.logo?.url || '';
+        const meta = extractMeta(html);
+        const text = htmlToText(html);
+        const stats = extractStats(text);
 
+        const rawTitle = meta.title || '';
+        const name = rawTitle.replace(/\s*[|–\-—:]\s*.{0,80}$/, '').replace(/\s*:\s*Home.*$/i,'').trim() || rawTitle.trim();
         if (!name) return null;
 
-        // Step 2: Wikipedia REST API — look up country from the university name
-        let country = '';
-        let founded = '';
-        let students = '';
+        const description = meta.description || stats.description.slice(0, 400) || '';
+        const image = /^https?:\/\//i.test(meta.image) ? meta.image : '';
+
+        // Collect courses from homepage
+        const courseMap = new Map();
+        const addCourses = (list) => list.forEach(c => { if (!courseMap.has(c.name.toLowerCase())) courseMap.set(c.name.toLowerCase(), c); });
+        addCourses(parseCourses(text));
+
+        // Discover and scrape programme sub-pages (up to 3 pages, parallel)
+        const progUrls = discoverProgUrls(html, firstUrl);
+        await Promise.all(progUrls.map(async (pageUrl) => {
+          try {
+            const pageHtml = await fetchHtml(pageUrl);
+            if (pageHtml) addCourses(parseCourses(htmlToText(pageHtml)));
+          } catch {/**/}
+        }));
+
+        const courses = [...courseMap.values()].slice(0, 40);
+
+        // Enrich with Wikipedia for better country/founded/students
+        let country = stats.country || '';
+        let founded = stats.founded || '';
+        let students = stats.students || '';
         try {
-          const wikiRes = await fetch(
-            `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`,
-            { signal: AbortSignal.timeout(6000) },
-          );
-          if (wikiRes.ok) {
-            const wiki = await wikiRes.json();
-            const extract = wiki.extract || '';
-            // Extract country
-            const countryMatch = extract.match(
-              /(?:located in|based in|situated in|university in|college in|institute in)\s+([A-Z][a-zA-Z\s]{2,30}?)(?:[,.\n]|$)/i,
-            ) || extract.match(/,\s*([A-Z][a-zA-Z\s]{2,25}?)\s*(?:is a|was founded|university)/i);
-            if (countryMatch) country = countryMatch[1].trim();
-            // Extract founded year
-            const foundedMatch = extract.match(/(?:founded|established|chartered)\s+(?:in\s+)?(\d{4})/i);
-            if (foundedMatch) founded = foundedMatch[1];
-            // Extract student count
-            const studMatch = extract.match(/([\d,]+)\s+(?:students|undergraduates)/i);
-            if (studMatch) students = studMatch[1].replace(/,/g, '') + '+';
+          const wRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`,{ signal: AbortSignal.timeout(6000) });
+          if (wRes.ok) {
+            const w = await wRes.json();
+            const ex = w.extract || '';
+            if (!country) { const cm2 = ex.match(/(?:located in|based in|university in|college in)\s+([A-Z][a-zA-Z\s]{2,30}?)(?:[,.\n]|$)/i); if (cm2) country = cm2[1].trim(); }
+            if (!founded) { const fm = ex.match(/(?:founded|established)\s+(?:in\s+)?(\d{4})/i); if (fm) founded = fm[1]; }
+            if (!students) { const sm2 = ex.match(/([\d,]+)\s+(?:students|undergraduates)/i); if (sm2) students = sm2[1].replace(/,/g,'')+'+'; }
           }
-        } catch { /* Wikipedia optional */ }
+        } catch {/**/}
 
         return {
           website: firstUrl,
@@ -1053,51 +1177,57 @@ export const universitiesApi = {
           country,
           founded,
           students,
-          image: /^https?:\/\//i.test(image) ? image : '',
-          courses: [],
-          source: 'microlink',
-          lookupWarning: 'Auto-filled from the university website. Programmes must be added manually.',
+          image,
+          courses,
+          source: 'client-scraper',
+          lookupWarning: courses.length === 0
+            ? 'Basic info loaded. No programmes were detected — add them manually below.'
+            : '',
         };
       } catch {
         return null;
       }
     }
 
-    try {
-      const res = await fetch(apiUrl, { headers: { 'Content-Type': 'application/json' } });
-      // Detect Firebase Hosting returning SPA HTML instead of JSON (no backend)
-      const contentType = res.headers.get('content-type') || '';
-      if (!res.ok || contentType.includes('text/html')) {
-        const data = await clientSideLookup();
-        if (data) return data;
+    // ── Microlink.io metadata-only fallback (last resort) ─────────────────────
+    async function microlinkFallback() {
+      try {
+        const r = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(firstUrl)}&palette=false&audio=false&video=false&iframe=false`,{ signal: AbortSignal.timeout(10000) });
+        if (!r.ok) return null;
+        const ml = await r.json();
+        if (ml.status !== 'success') return null;
+        const rawTitle = ml.data?.title || '';
+        const name = rawTitle.replace(/\s*[|–\-—:]\s*.{0,60}$/, '').trim() || rawTitle.trim();
+        if (!name) return null;
         return {
           website: firstUrl,
-          courses: [],
-          lookupWarning: 'Could not auto-fill from this URL. Fill in the fields manually — everything still saves to Firestore.',
+          name,
+          description: (ml.data?.description || '').slice(0, 400),
+          image: /^https?:\/\//i.test(ml.data?.image?.url||'') ? ml.data.image.url : '',
+          country: '', founded: '', students: '', courses: [],
+          source: 'microlink',
+          lookupWarning: 'Name auto-filled. Add country and programmes manually.',
+        };
+      } catch { return null; }
+    }
+
+    // ── Main: backend → client scraper → microlink ────────────────────────────
+    try {
+      const res = await fetch(apiUrl, { headers: { 'Content-Type': 'application/json' } });
+      const contentType = res.headers.get('content-type') || '';
+      // If backend is not running, Firebase returns the SPA HTML
+      if (!res.ok || contentType.includes('text/html')) {
+        return (await clientSideScraper()) || (await microlinkFallback()) || {
+          website: firstUrl, courses: [],
+          lookupWarning: 'Could not auto-fill. Fill in the fields manually — everything still saves to Firestore.',
         };
       }
-      const data = await res.json().catch(() => ({}));
-      return data;
+      return await res.json().catch(() => ({}));
     } catch (err) {
       const msg = String(err?.message || '').toLowerCase();
-      const isOffline =
-        msg.includes('failed to fetch') ||
-        msg.includes('connection') ||
-        msg.includes('network') ||
-        msg.includes('err_connection') ||
-        msg.includes('econnrefused') ||
-        msg.includes('load failed');
-      if (isOffline) {
-        const data = await clientSideLookup();
-        if (data) return data;
-      }
-      return {
-        website: firstUrl,
-        courses: [],
-        lookupWarning: isOffline
-          ? 'Could not reach the lookup service. Fill in the fields manually — everything still saves to Firestore.'
-          : err.message || 'Lookup unavailable',
-      };
+      const offline = msg.includes('failed to fetch')||msg.includes('connection')||msg.includes('network')||msg.includes('err_connection')||msg.includes('econnrefused')||msg.includes('load failed');
+      if (offline) return (await clientSideScraper()) || (await microlinkFallback()) || { website: firstUrl, courses: [], lookupWarning: 'Could not reach lookup service. Fill in the fields manually.' };
+      return { website: firstUrl, courses: [], lookupWarning: err.message || 'Lookup unavailable' };
     }
   },
 
