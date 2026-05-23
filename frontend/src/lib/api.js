@@ -1017,8 +1017,16 @@ export const universitiesApi = {
     }
     function extractMeta(html) {
       const get = (patterns) => { for (const p of patterns) { const m = html.match(p); if (m?.[1]) return decodeEnt(m[1].trim()); } return ''; };
+      // og:site_name is the actual university name; og:title is often an SEO marketing phrase
+      const siteName = get([/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i, /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i]);
+      const ogTitle  = get([/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i, /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i]);
+      const tagTitle = get([/<title[^>]*>([^<]{2,120})<\/title>/i]);
+      // Prefer og:site_name → clean og:title → clean tag title
+      const isSeoSpam = (t) => /^(top|best|leading|no\.?\s*1|#1|premier|renowned|famous|ranked)\s+(university|college|institute|school)\b/i.test(t.trim());
+      const title = siteName || (ogTitle && !isSeoSpam(ogTitle) ? ogTitle : '') || tagTitle;
       return {
-        title: get([/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i, /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i, /<title[^>]*>([^<]{2,120})<\/title>/i]),
+        title,
+        siteName,
         description: get([/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i, /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i, /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i]),
         image: get([/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i, /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i]),
       };
@@ -1097,29 +1105,30 @@ export const universitiesApi = {
           scored.push({ url: abs, score });
         } catch {/**/}
       }
-      return scored.sort((a,b)=>b.score-a.score).slice(0,3).map(s=>s.url);
+      return scored.sort((a,b)=>b.score-a.score).slice(0,2).map(s=>s.url); // max 2 to stay under proxy rate limits
     }
 
-    // ── Full client-side scraper via allorigins.win CORS proxy ────────────────
+    // ── Full client-side scraper via CORS proxies ────────────────────────────
     async function clientSideScraper() {
       async function fetchHtml(targetUrl) {
-        // Try allorigins.win first, then corsproxy.io as fallback
-        const proxies = [
-          `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
-          `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
-        ];
-        for (const proxyUrl of proxies) {
-          try {
-            const r = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
-            if (!r.ok) continue;
+        // corsproxy.io → returns raw HTML with proper CORS headers (most reliable)
+        // allorigins.win → returns JSON {contents} (fallback, rate-limits on sub-pages)
+        const attempts = [
+          async () => {
+            const r = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`, { signal: AbortSignal.timeout(13000) });
+            if (!r.ok) return null;
+            return r.text();
+          },
+          async () => {
+            const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`, { signal: AbortSignal.timeout(12000) });
+            if (!r.ok) return null;
             const ct = r.headers.get('content-type') || '';
-            if (ct.includes('application/json')) {
-              const j = await r.json();
-              if (j?.contents) return j.contents;
-            } else {
-              return await r.text();
-            }
-          } catch {/**/ }
+            if (ct.includes('application/json')) { const j = await r.json(); return j?.contents || null; }
+            return r.text();
+          },
+        ];
+        for (const attempt of attempts) {
+          try { const html = await attempt(); if (html && html.length > 200) return html; } catch {/**/}
         }
         return null;
       }
@@ -1133,7 +1142,14 @@ export const universitiesApi = {
         const stats = extractStats(text);
 
         const rawTitle = meta.title || '';
-        const name = rawTitle.replace(/\s*[|–\-—:]\s*.{0,80}$/, '').replace(/\s*:\s*Home.*$/i,'').trim() || rawTitle.trim();
+        // Clean title: strip '| Suffix', '- Suffix', ': Home' patterns
+        let name = rawTitle.replace(/\s*[|–\-—]\s*.{0,80}$/, '').replace(/\s*:\s*Home.*$/i,'').trim();
+        // If title looks like SEO spam, try extracting name from the '| RealName' part
+        if (!name || /^(top|best|leading|no\.?\s*1|premier)\s+(university|college|institute)/i.test(name)) {
+          const pipeMatch = rawTitle.match(/[|–\-—]\s*(.{4,80}?)\s*$/);
+          if (pipeMatch) name = pipeMatch[1].trim();
+        }
+        if (!name) name = rawTitle.trim();
         if (!name) return null;
 
         const description = meta.description || stats.description.slice(0, 400) || '';
@@ -1144,31 +1160,37 @@ export const universitiesApi = {
         const addCourses = (list) => list.forEach(c => { if (!courseMap.has(c.name.toLowerCase())) courseMap.set(c.name.toLowerCase(), c); });
         addCourses(parseCourses(text));
 
-        // Discover and scrape programme sub-pages (up to 3 pages, parallel)
+        // Discover and scrape programme sub-pages — SEQUENTIAL to avoid rate-limit CORS errors
         const progUrls = discoverProgUrls(html, firstUrl);
-        await Promise.all(progUrls.map(async (pageUrl) => {
+        for (const pageUrl of progUrls) {
           try {
+            await new Promise(r => setTimeout(r, 600)); // brief pause between proxy requests
             const pageHtml = await fetchHtml(pageUrl);
             if (pageHtml) addCourses(parseCourses(htmlToText(pageHtml)));
           } catch {/**/}
-        }));
+        }
 
         const courses = [...courseMap.values()].slice(0, 40);
 
-        // Enrich with Wikipedia for better country/founded/students
+        // Enrich with Wikipedia — only if name looks like a real proper noun, not an SEO phrase
         let country = stats.country || '';
         let founded = stats.founded || '';
         let students = stats.students || '';
-        try {
-          const wRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`,{ signal: AbortSignal.timeout(6000) });
-          if (wRes.ok) {
-            const w = await wRes.json();
-            const ex = w.extract || '';
-            if (!country) { const cm2 = ex.match(/(?:located in|based in|university in|college in)\s+([A-Z][a-zA-Z\s]{2,30}?)(?:[,.\n]|$)/i); if (cm2) country = cm2[1].trim(); }
-            if (!founded) { const fm = ex.match(/(?:founded|established)\s+(?:in\s+)?(\d{4})/i); if (fm) founded = fm[1]; }
-            if (!students) { const sm2 = ex.match(/([\d,]+)\s+(?:students|undergraduates)/i); if (sm2) students = sm2[1].replace(/,/g,'')+'+'; }
-          }
-        } catch {/**/}
+        const looksLikeRealName = name.length > 3 && !/^(top|best|leading|no\.?\s*1|premier|#1)/i.test(name);
+        if (looksLikeRealName) {
+          try {
+            const wRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`,{ signal: AbortSignal.timeout(6000) });
+            if (wRes.ok) {
+              const w = await wRes.json();
+              if (w.type !== 'disambiguation' && w.extract) {
+                const ex = w.extract;
+                if (!country) { const cm2 = ex.match(/(?:located in|based in|university in|college in)\s+([A-Z][a-zA-Z\s]{2,30}?)(?:[,.\n]|$)/i); if (cm2) country = cm2[1].trim(); }
+                if (!founded) { const fm = ex.match(/(?:founded|established)\s+(?:in\s+)?(\d{4})/i); if (fm) founded = fm[1]; }
+                if (!students) { const sm2 = ex.match(/([\d,]+)\s+(?:students|undergraduates)/i); if (sm2) students = sm2[1].replace(/,/g,'')+'+'; }
+              }
+            }
+          } catch {/**/}
+        }
 
         return {
           website: firstUrl,
