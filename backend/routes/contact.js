@@ -5,6 +5,7 @@ import { authMiddleware, adminOnly } from '../middleware/auth.js';
 import { isDbConnected, withDbQuery } from '../lib/dbReady.js';
 import { sendRouteError } from '../lib/asyncHandler.js';
 import { publishContentChange } from '../lib/contentStreamHub.js';
+import { sendContactConfirmation, sendContactAdminAlert } from '../lib/notifyApplications.js';
 
 const router = Router();
 
@@ -21,6 +22,16 @@ router.post('/',
     if (!isDbConnected()) return res.status(503).json({ error: 'Contact service is temporarily unavailable. Please try again shortly.' });
     const submission = await ContactSubmission.create(req.body);
     publishContentChange('contacts');
+
+    // Fire emails in background — don't block the response
+    const { name, email, subject, message, company, phone } = req.body;
+    setImmediate(() => {
+      sendContactConfirmation({ name, email, subject, message, company, phone })
+        .catch((e) => console.warn('[contact] Confirmation email failed:', e.message));
+      sendContactAdminAlert({ name, email, subject, message, company, phone })
+        .catch((e) => console.warn('[contact] Admin alert email failed:', e.message));
+    });
+
     res.status(201).json({ id: submission._id, message: 'Thank you. We will get back to you soon.' });
   }
 );

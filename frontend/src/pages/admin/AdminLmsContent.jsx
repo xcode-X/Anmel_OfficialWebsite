@@ -15,7 +15,6 @@ const emptyForm = {
 };
 
 function getFieldPlaceholders(form, liveClock) {
-  const type = form.contentType || 'video';
   const nextSlot = new Date(liveClock);
   nextSlot.setMinutes(0, 0, 0);
   nextSlot.setHours(nextSlot.getHours() + 1);
@@ -26,35 +25,16 @@ function getFieldPlaceholders(form, liveClock) {
     minute: '2-digit',
   });
 
-  const titleByType = {
-    video: 'e.g. Module 1 — Introduction to Cybersecurity',
-    document: 'e.g. Week 2 — Risk Assessment Worksheet (PDF)',
-    lesson: 'e.g. Lesson 3 — Building Secure Login Flows',
-  };
-
-  const mediaByType = {
-    video: 'https://www.youtube.com/watch?v=YOUR_VIDEO_ID or https://vimeo.com/123456789',
-    document: 'https://cdn.anmelinc.com/lms/module-2-study-guide.pdf',
-    lesson: 'https://learn.anmelinc.com/courses/intro-web-dev/lesson-3',
-  };
-
-  const durationByType = {
-    video: '45 — video length in minutes',
-    document: '20 — estimated reading time in minutes',
-    lesson: '30 — lesson duration in minutes',
-  };
-
   return {
-    title: titleByType[type] || titleByType.video,
-    courseSlug: 'e.g. intro-web-dev, cybersecurity-fundamentals, data-analytics',
-    moduleLabel: 'e.g. Module 2 · Authentication & Access Control',
-    mediaUrl: mediaByType[type] || mediaByType.video,
-    durationMin: durationByType[type] || durationByType.video,
-    recordedAt: `e.g. ${liveClock.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} or Spring 2026 cohort`,
-    description:
-      'Short summary for the student portal — learning outcomes, key topics, and any prerequisites for this item.',
-    search: 'Search title, course slug, module label, or description…',
-    scheduleHelper: `Optional. Pick a future time to auto-publish (e.g. ${scheduleExample}). Leave empty for draft.`,
+    title: 'Title',
+    courseSlug: 'Slug',
+    moduleLabel: 'Label',
+    mediaUrl: 'Link',
+    durationMin: 'Minutes',
+    recordedAt: 'Date',
+    description: 'Summary',
+    search: 'Search',
+    scheduleHelper: `Optional. Auto-publish at ${scheduleExample}`,
   };
 }
 

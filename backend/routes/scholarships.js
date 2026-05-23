@@ -6,6 +6,7 @@ import { authMiddleware, adminOnly, optionalAuth } from '../middleware/auth.js';
 import { isDbConnected, withDbQuery } from '../lib/dbReady.js';
 import { publishContentChange } from '../lib/contentStreamHub.js';
 import { publishScholarshipToSocial } from '../lib/socialPublisher.js';
+import { sendScholarshipConfirmation, sendScholarshipAdminAlert } from '../lib/notifyApplications.js';
 import {
   persistMediaValue,
   persistMediaFields,
@@ -192,8 +193,8 @@ router.get('/admin/all', authMiddleware, adminOnly, async (req, res) => {
     res.json(scholarships);
   } catch (err) {
     console.warn('[scholarships] GET /admin/all failed:', err.message);
-    const mongo = formatMongoError(err);
-    if (mongo) return res.status(mongo.status).json({ error: mongo.error });
+    const mongoErr = formatMongooseError(err);
+    if (mongoErr) return res.status(503).json({ error: mongoErr });
     res.status(503).json({ error: err?.message || 'Could not load scholarships' });
   }
 });
@@ -271,6 +272,25 @@ router.post('/:id/applications', async (req, res) => {
     });
 
     publishContentChange('scholarship-applications', { scholarshipId: String(scholarship._id) });
+
+    // Send emails in background — don't block the response
+    const notifyData = {
+      name: fullName,
+      email,
+      phone: String(body.phone || '').trim(),
+      scholarshipTitle: scholarship.title,
+      university: String(body.university || scholarship.university || '').trim(),
+      country: String(body.country || scholarship.country || '').trim(),
+      course: String(body.course || '').trim(),
+      degreeLevel: String(body.degreeLevel || '').trim(),
+    };
+    setImmediate(() => {
+      sendScholarshipConfirmation(notifyData)
+        .catch((e) => console.warn('[scholarships] Confirmation email failed:', e.message));
+      sendScholarshipAdminAlert(notifyData)
+        .catch((e) => console.warn('[scholarships] Admin alert email failed:', e.message));
+    });
+
     res.status(201).json({ ok: true, id: application._id });
   } catch (err) {
     console.warn('[scholarships] POST /:id/applications failed:', err.message);

@@ -1,15 +1,16 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { api, auth, studentRegistrations } from '../../lib/api';
+import { api, studentRegistrations } from '../../lib/api';
 import { mergeApplicationWithFiles } from '../../lib/firestoreClient';
-import { subscribeFirestoreDocument } from '../../lib/firestoreRealtime';
+import { subscribeFirestoreDocument, subscribeFirestoreCollection } from '../../lib/firestoreRealtime';
+import { provisionLmsAccount } from '../../lib/lmsProvisioning';
 import { ADMIN_BASE } from '../../lib/adminPaths';
 import { getAcademyCourseTitle, isInternApplication } from '../../lib/applicationTypes';
 import {
   Loader2, Wifi, WifiOff, Building, Clock, X, Eye, Download,
   FileText, CheckCircle2, XCircle, RotateCcw, GraduationCap,
   ChevronRight, AlertTriangle, User, Mail, Phone, Globe,
-  Copy, ArrowLeft,
+  Copy, ArrowLeft, RefreshCw,
 } from 'lucide-react';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -123,6 +124,7 @@ function LmsSuccessModal({ open, result, studentName, onClose }) {
 
   const emailSent = result.notification?.emailResult?.sent === true;
   const emailDryRun = result.notification?.emailResult?.dryRun === true;
+  const offlineMock = result.notification?.offlineMock === true || result.notification?.emailResult?.note;
   const portalUrl = `${window.location.origin}/student`;
 
   return (
@@ -170,9 +172,13 @@ function LmsSuccessModal({ open, result, studentName, onClose }) {
             <div className="rounded-lg border border-[#2FA084]/30 bg-[#2FA084]/10 px-3 py-2.5 text-sm text-[#2FA084]">
               Login credentials were sent to <strong>{result.email}</strong>. The student can sign in at the LMS portal right away.
             </div>
+          ) : offlineMock ? (
+            <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2.5 text-sm text-blue-300">
+              LMS account created via Firestore (backend offline). Share the credentials above with the student manually. Once SMTP is configured the system will send emails automatically.
+            </div>
           ) : emailDryRun ? (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-300">
-              Email could not be sent automatically — SMTP is not configured on the server. Share the credentials above with the student manually, or set <code className="text-xs">SMTP_USER</code> and <code className="text-xs">SMTP_PASS</code> in <code className="text-xs">backend/.env</code>.
+              Email could not be sent — SMTP is not configured. Share credentials manually, or set <code className="text-xs">SMTP_USER</code> and <code className="text-xs">SMTP_PASS</code> in <code className="text-xs">backend/.env</code>.
             </div>
           ) : (
             <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">
@@ -286,10 +292,8 @@ function ApplicationDetail({ id, onClose, onRefresh }) {
     setBusy('lms');
     setNotice(null);
     try {
-      const result = await studentRegistrations.provision(id);
-      if (!result?.provisioned) {
-        throw new Error('LMS account could not be created. Please try again.');
-      }
+      const result = await provisionLmsAccount(id);
+      if (!result?.provisioned) throw new Error('LMS account could not be created. Please try again.');
       setLmsResult(result);
       setLmsModalOpen(true);
       await load();
@@ -756,26 +760,20 @@ export default function AdminStudentIntake() {
   useEffect(() => {
     load();
 
-    const cleanupSse = studentRegistrations.subscribe((rows) => {
+    // Real-time Firestore listener — works without backend
+    const cleanupLive = subscribeFirestoreCollection('studentRegistrations', (rows) => {
       setSseOk(true);
-      if (Array.isArray(rows)) {
-        setDbDown(false);
-        setRows(rows);
-        setLoading(false);
-      } else {
-        load(true);
-      }
+      setDbDown(false);
+      setRows(Array.isArray(rows) ? rows : []);
+      setLoading(false);
     });
 
-    const pollId = window.setInterval(() => load(true), 20000);
-
-    const onVis = () => {
-      if (document.visibilityState === 'visible') load(true);
-    };
+    const pollId = window.setInterval(() => load(true), 30000);
+    const onVis = () => { if (document.visibilityState === 'visible') load(true); };
     document.addEventListener('visibilitychange', onVis);
 
     return () => {
-      cleanupSse();
+      cleanupLive();
       clearInterval(pollId);
       clearTimeout(retryRef.current);
       document.removeEventListener('visibilitychange', onVis);

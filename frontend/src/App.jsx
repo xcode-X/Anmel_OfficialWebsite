@@ -53,7 +53,7 @@ const AdminOverview = lazy(() => import('./pages/admin/AdminOverview'));
 const AdminBlog = lazy(() => import('./pages/admin/AdminBlog'));
 const AdminCaseStudies = lazy(() => import('./pages/admin/AdminCaseStudies'));
 const AdminLmsContent = lazy(() => import('./pages/admin/AdminLmsContent'));
-const AdminStudentIntake = lazy(() => import('./pages/admin/AdminStudentIntake'));
+
 const AdminContacts = lazy(() => import('./pages/admin/AdminContacts'));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'));
 const AdminSettings = lazy(() => import('./pages/admin/AdminSettings'));
@@ -136,8 +136,7 @@ function App() {
                 <Route path="lms" element={<AdminLmsContent />} />
                 <Route path="students" element={<Navigate to={`${ADMIN_BASE}/scholarships`} replace />} />
                 <Route path="students/:id" element={<Navigate to={`${ADMIN_BASE}/scholarships`} replace />} />
-                <Route path="intern-applications" element={<AdminStudentIntake />} />
-                <Route path="intern-applications/:id" element={<AdminStudentIntake />} />
+
                 <Route path="contacts" element={<AdminContacts />} />
                 <Route path="pentest-results" element={<AdminPenTestResults />} />
                 <Route path="users" element={<AdminUsers />} />

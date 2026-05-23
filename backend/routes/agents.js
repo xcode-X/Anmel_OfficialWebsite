@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { createAdminSseRoute } from '../lib/streamRoute.js';
 import { broadcastSse } from '../lib/sse.js';
-import nodemailer from 'nodemailer';
+import { sendEmail } from '../lib/mailer.js';
 import Agent from '../models/Agent.js';
 import User from '../models/User.js';
 import { authMiddleware, adminOnly, createCustomToken } from '../middleware/auth.js';
@@ -13,6 +13,43 @@ import { persistMediaFields, resolvePublicMediaUrl } from '../lib/fileStorage.js
 import { AGENT_DOC_FIELDS } from '../lib/mediaFields.js';
 import { publishContentChange } from '../lib/contentStreamHub.js';
 import { updateDoc, COLLECTIONS } from '../lib/firestoreDb.js';
+import { getFirestore } from '../config/firebase.js';
+
+/**
+ * Mirror a new agent application to Firestore (without large binary fields)
+ * so real-time Firestore subscribers in the admin dashboard pick it up instantly.
+ */
+async function mirrorAgentToFirestore(agent) {
+  try {
+    const db = getFirestore();
+    const docId = String(agent._id || agent.id);
+    await db.collection(COLLECTIONS.agents).doc(docId).set({
+      fullName: agent.fullName || '',
+      email:    String(agent.email || '').toLowerCase(),
+      phone:    agent.phone || '',
+      gender:   agent.gender || '',
+      nationality:         agent.nationality || '',
+      countryOfResidence:  agent.countryOfResidence || '',
+      residentialAddress:  agent.residentialAddress || '',
+      organizationName:    agent.organizationName || '',
+      yearsOfExperience:   agent.yearsOfExperience || 0,
+      studentsPerYear:     agent.studentsPerYear || 0,
+      areasOfRecruitment:  agent.areasOfRecruitment || [],
+      targetCountries:     agent.targetCountries || [],
+      personalStatement:   agent.personalStatement || '',
+      referralSource:      agent.referralSource || '',
+      socialMediaLinks:    agent.socialMediaLinks || {},
+      agentCode:           agent.agentCode || '',
+      status:              agent.status || 'Pending',
+      loginEnabled:        agent.loginEnabled || false,
+      agreedToTerms:       agent.agreedToTerms || false,
+      createdAt:           agent.createdAt ? new Date(agent.createdAt).toISOString() : new Date().toISOString(),
+      // Intentionally omit passportPhoto / idDocument (large binary / file paths)
+    }, { merge: false });
+  } catch (e) {
+    console.warn('[agents] mirrorAgentToFirestore failed (non-fatal):', e.message);
+  }
+}
 
 const router = Router();
 
@@ -37,25 +74,12 @@ function generateTempPassword() {
   return pass;
 }
 
-function makeTransporter() {
-  return nodemailer.createTransport({
-    host:   process.env.SMTP_HOST || 'smtp.gmail.com',
-    port:   Number(process.env.SMTP_PORT) || 587,
-    secure: false,
-    auth:   { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-}
 
 async function sendApprovalEmail(agent, tempPassword, agentCode) {
   const clientUrl = (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/$/, '');
   const loginUrl = `${clientUrl}/agent-portal`;
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.warn('[agents] SMTP not configured — credentials email skipped');
-    return { sent: false, error: 'SMTP not configured', loginUrl };
-  }
   try {
-    await makeTransporter().sendMail({
-      from:    `"Anmel Study Abroad" <${process.env.SMTP_USER || 'noreply@anmel.com'}>`,
+    const result = await sendEmail({
       to:      agent.email,
       subject: '🎉 Your Agent Application is Approved — Login Credentials',
       html: `
@@ -66,27 +90,26 @@ async function sendApprovalEmail(agent, tempPassword, agentCode) {
           </div>
           <div style="padding:40px;">
             <h2 style="color:#64FFDA;margin-top:0;">Congratulations, ${agent.fullName}!</h2>
-            <p>Your agent application has been reviewed and <strong style="color:#64FFDA;">approved</strong>. Welcome to the Anmel Agent Network!</p>
+            <p>Your agent application has been <strong style="color:#64FFDA;">approved</strong>. Welcome to the Anmel Agent Network!</p>
             <div style="background:rgba(100,255,218,.05);border:1px solid rgba(100,255,218,.2);border-radius:12px;padding:24px;margin:24px 0;">
               <h3 style="color:#64FFDA;margin-top:0;">🔐 Your Login Credentials</h3>
               <table style="width:100%;">
-                <tr><td style="color:#94a3b8;padding:4px 0;">Login ID (username):</td><td style="color:#fff;font-weight:bold;">${agentCode}</td></tr>
+                <tr><td style="color:#94a3b8;padding:4px 0;">Login ID:</td><td style="color:#fff;font-weight:bold;">${agentCode}</td></tr>
                 <tr><td style="color:#94a3b8;padding:4px 0;">Email:</td><td style="color:#fff;">${agent.email}</td></tr>
-                <tr><td style="color:#94a3b8;padding:4px 0;">Temporary Password:</td><td style="color:#64FFDA;font-weight:bold;font-size:18px;">${tempPassword}</td></tr>
+                <tr><td style="color:#94a3b8;padding:4px 0;">Temp Password:</td><td style="color:#64FFDA;font-weight:bold;font-size:18px;">${tempPassword}</td></tr>
               </table>
             </div>
-            <p style="color:#94a3b8;font-size:14px;">⚠️ Please log in and change your password immediately for security purposes.</p>
-            <p style="color:#94a3b8;font-size:14px;margin-top:16px;">Login link: <a href="${loginUrl}" style="color:#64FFDA;">${loginUrl}</a></p>
+            <p style="color:#94a3b8;font-size:14px;">⚠️ Please change your password on first login.</p>
             <div style="text-align:center;margin-top:32px;">
-              <a href="${loginUrl}" style="background:#64FFDA;color:#0A192F;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:16px;">Access Your Agent Portal →</a>
+              <a href="${loginUrl}" style="background:#64FFDA;color:#0A192F;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;">Access Agent Portal →</a>
             </div>
           </div>
           <div style="padding:24px;text-align:center;border-top:1px solid rgba(255,255,255,.05);color:#475569;font-size:12px;">
-            <p>© 2025 Anmel Study Abroad. All rights reserved.</p>
+            <p>© ${new Date().getFullYear()} Anmel Study Abroad. All rights reserved.</p>
           </div>
         </div>`,
     });
-    return { sent: true, loginUrl };
+    return { ...result, loginUrl };
   } catch (err) {
     console.warn('[agents] Approval email failed:', err.message);
     return { sent: false, error: err.message, loginUrl };
@@ -94,29 +117,26 @@ async function sendApprovalEmail(agent, tempPassword, agentCode) {
 }
 
 async function sendRejectionEmail(agent, reason) {
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
   try {
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
-    await makeTransporter().sendMail({
-      from:    `"Anmel Study Abroad" <${process.env.SMTP_USER || 'noreply@anmel.com'}>`,
+    await sendEmail({
       to:      agent.email,
       subject: 'Update on Your Agent Application — Anmel Study Abroad',
       html: `
         <div style="font-family:'Segoe UI',sans-serif;max-width:600px;margin:0 auto;background:#0A192F;color:#e2e8f0;border-radius:16px;overflow:hidden;">
           <div style="background:linear-gradient(135deg,#0A192F,#112240);padding:40px;text-align:center;border-bottom:1px solid rgba(255,255,255,.1);">
             <h1 style="color:#64FFDA;font-size:28px;margin:0;">🌍 Anmel Study Abroad</h1>
-            <p style="color:#94a3b8;margin-top:8px;">Agent Partnership Program</p>
           </div>
           <div style="padding:40px;">
             <h2 style="color:#e2e8f0;margin-top:0;">Dear ${agent.fullName},</h2>
-            <p style="line-height:1.7;">Thank you for applying to become an Anmel Study Abroad partner agent. After careful review, we are unable to approve your application at this time.</p>
-            ${reason ? `<div style="background:rgba(255,255,255,.05);border-left:3px solid #64FFDA;border-radius:0 8px 8px 0;padding:16px 20px;margin:24px 0;"><p style="margin:0;color:#94a3b8;font-size:14px;"><strong style="color:#e2e8f0;">Reason:</strong> ${reason}</p></div>` : ''}
-            <p style="color:#94a3b8;font-size:14px;line-height:1.7;">If you believe this decision was made in error or you would like to reapply with updated information, please contact us at <a href="mailto:${process.env.SMTP_USER || 'info@anmel.com'}" style="color:#64FFDA;">${process.env.SMTP_USER || 'info@anmel.com'}</a>.</p>
+            <p style="line-height:1.7;">Thank you for applying. After careful review, we are unable to approve your application at this time.</p>
+            ${reason ? `<div style="background:rgba(255,255,255,.05);border-left:3px solid #64FFDA;border-radius:0 8px 8px 0;padding:16px 20px;margin:24px 0;"><p style="margin:0;color:#94a3b8;"><strong style="color:#e2e8f0;">Reason:</strong> ${reason}</p></div>` : ''}
             <div style="text-align:center;margin-top:32px;">
               <a href="${clientUrl}/agent-registration" style="background:rgba(100,255,218,.1);color:#64FFDA;border:1px solid rgba(100,255,218,.3);padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">Apply Again</a>
             </div>
           </div>
           <div style="padding:24px;text-align:center;border-top:1px solid rgba(255,255,255,.05);color:#475569;font-size:12px;">
-            <p>© 2025 Anmel Study Abroad. All rights reserved.</p>
+            <p>© ${new Date().getFullYear()} Anmel Study Abroad. All rights reserved.</p>
           </div>
         </div>`,
     });
@@ -146,19 +166,15 @@ router.post('/register', async (req, res) => {
   const existing = await Agent.findOne({ email: email.toLowerCase() });
   if (existing) return res.status(409).json({ error: 'An application with this email already exists' });
 
-  const storedDocs = await persistMediaFields(
-    { passportPhoto, idDocument },
-    AGENT_DOC_FIELDS,
-    'agents',
-  );
-
   const agentCode = generateAgentCode();
 
+  // ── Step 1: Save agent to MongoDB immediately WITHOUT waiting for file storage.
+  //    This makes the response fast (< 1s). Files are persisted in the background below.
   const agent = await Agent.create({
     fullName, gender, dateOfBirth: new Date(dateOfBirth), nationality, countryOfResidence,
     phone, email: email.toLowerCase(), residentialAddress,
-    passportPhoto: storedDocs.passportPhoto || '',
-    idDocument: storedDocs.idDocument || '',
+    passportPhoto: '',  // set in background after file persistence
+    idDocument: '',     // set in background after file persistence
     idDocumentType,
     organizationName, yearsOfExperience: Number(yearsOfExperience) || 0,
     areasOfRecruitment: Array.isArray(areasOfRecruitment) ? areasOfRecruitment : [areasOfRecruitment].filter(Boolean),
@@ -167,14 +183,42 @@ router.post('/register', async (req, res) => {
     personalStatement, agreedToTerms, status: 'Pending', agentCode, loginEnabled: false,
   });
 
+  const agentId = String(agent._id);
+
+  // ── Step 2: Notify clients & respond IMMEDIATELY — no waiting for file writes.
   emitAgentChanged();
   publishContentChange('agents');
   publishContentChange('users');
+
+  // ── Step 3: Mirror to Firestore (non-blocking) so admin Firestore subscribers
+  //    see the new application in real-time without waiting for a full poll cycle.
+  mirrorAgentToFirestore(agent);
+
   res.status(201).json({
     ok: true,
-    agentId: agent._id,
+    agentId,
     agentCode,
     message: 'Application submitted successfully. You will be notified upon review.',
+  });
+
+  // ── Step 4: Persist uploaded files in the background (non-blocking).
+  //    Update the MongoDB record once done. Fires AFTER the response has been sent.
+  setImmediate(async () => {
+    try {
+      const storedDocs = await persistMediaFields(
+        { passportPhoto, idDocument },
+        AGENT_DOC_FIELDS,
+        'agents',
+      );
+      const updates = {};
+      if (storedDocs.passportPhoto) updates.passportPhoto = storedDocs.passportPhoto;
+      if (storedDocs.idDocument)    updates.idDocument    = storedDocs.idDocument;
+      if (Object.keys(updates).length) {
+        await Agent.findByIdAndUpdate(agentId, { $set: updates });
+      }
+    } catch (err) {
+      console.error('[agents/register] Background file persistence failed for', agentId, err.message);
+    }
   });
 });
 

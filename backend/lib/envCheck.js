@@ -24,6 +24,12 @@ export function validateEnvironment() {
     warnings.push('CLIENT_URL is not set — defaulting to http://localhost:5173 for CORS/links.');
   }
 
+  const hasResend = !!process.env.RESEND_API_KEY?.trim();
+  const hasSmtp   = !!(process.env.SMTP_USER?.trim() && process.env.SMTP_PASS?.trim());
+  if (!hasResend && !hasSmtp) {
+    warnings.push('No email provider configured — set RESEND_API_KEY in backend/.env to enable notifications.');
+  }
+
   for (const w of warnings) {
     logWarn('env', w);
   }

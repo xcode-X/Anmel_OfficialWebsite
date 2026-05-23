@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { getJwtSecret } from '../lib/jwtSecret.js';
 import { createAdminSseRoute } from '../lib/streamRoute.js';
 import { broadcastSse } from '../lib/sse.js';
-import StudentRegistration from '../models/StudentRegistration.js';
+import InternApplication from '../models/StudentRegistration.js'; // intern apps stored in studentRegistrations collection
 import { authMiddleware, adminOnly } from '../middleware/auth.js';
 import { notifyStudentProvisioned } from '../lib/notifyStudent.js';
 import { isDbConnected, withDbQuery } from '../lib/dbReady.js';
@@ -15,7 +15,6 @@ import { invalidateAdminStatsCache } from './adminStats.js';
 import { publishContentChange } from '../lib/contentStreamHub.js';
 import { logError } from '../lib/logger.js';
 import User from '../models/User.js';
-import { sendStudentRegistrationConfirmation } from '../lib/notifyApplications.js';
 
 const router = Router();
 const listeners = new Set();
@@ -36,7 +35,7 @@ function emitChanged() {
 }
 
 /** Notify admin dashboards (SSE + stats cache). */
-export function broadcastStudentRegistrationChange() {
+export function broadcastInternApplicationChange() {
   emitChanged();
   invalidateAdminStatsCache();
 }
@@ -84,11 +83,11 @@ export async function syncStudentFromApplication(body, storedDocs, { courseSlug 
   if (!isDbConnected()) return null;
   const email = String(body.email || '').trim().toLowerCase();
   if (!email) return null;
-  const existing = await StudentRegistration.findOne({ email }).select('_id').lean();
+  const existing = await InternApplication.findOne({ email }).select('_id').lean();
   if (existing) return existing;
   const payload = buildStudentPayload({ ...body, email, courseSlug: courseSlug || body.courseSlug || 'general' }, storedDocs);
-  const registration = await StudentRegistration.create(payload);
-  broadcastStudentRegistrationChange();
+  const registration = await InternApplication.create(payload);
+  broadcastInternApplicationChange();
   return registration;
 }
 
@@ -146,31 +145,20 @@ router.post('/',
       }
       const payload = buildStudentPayload(req.body, storedDocs);
 
-      const existing = await StudentRegistration.findOne({ email: payload.email });
+      const existing = await InternApplication.findOne({ email: payload.email });
       if (existing) {
         return res.status(409).json({ error: 'An application with this email already exists.' });
       }
 
-      const registration = await StudentRegistration.create(payload);
-      broadcastStudentRegistrationChange();
-
-      // Send confirmation email in background
-      setImmediate(() => {
-        sendStudentRegistrationConfirmation({
-          name: payload.fullName,
-          email: payload.email,
-          course: payload.course || payload.courseSlug,
-          university: payload.university,
-        }).catch((e) => console.warn('[student-reg] Confirmation email failed:', e.message));
-      });
-
+      const registration = await InternApplication.create(payload);
+      broadcastInternApplicationChange();
       res.status(201).json({ id: registration._id, submitted: true });
     } catch (err) {
-      logError('student-registrations/create', err);
+      logError('intern-applications/create', err);
       if (err?.status === 413) {
         return res.status(413).json({ error: err.message || 'One or more files are too large.' });
       }
-      return sendRouteError(res, err, { scope: 'student-registrations/create' });
+      return sendRouteError(res, err, { scope: 'intern-applications/create' });
     }
   }
 );
@@ -185,12 +173,12 @@ router.get('/', authMiddleware, adminOnly, async (req, res) => {
   try {
     const rows = await withDbQuery(
       () =>
-        StudentRegistration.find({})
+        InternApplication.find({})
           .select(STUDENT_LIST_EXCLUDE)
           .sort({ createdAt: -1 })
           .maxTimeMS(12000)
           .lean(),
-      { fallback: [], label: 'student-registrations list', timeoutMs: 15000 },
+      { fallback: [], label: 'intern-applications list', timeoutMs: 15000 },
     );
 
     // Doc presence is resolved on GET /:id (full record). Listing with aggregation
@@ -202,7 +190,7 @@ router.get('/', authMiddleware, adminOnly, async (req, res) => {
       })),
     );
   } catch (err) {
-    return sendRouteError(res, err, { scope: 'student-registrations/list' });
+    return sendRouteError(res, err, { scope: 'intern-applications/list' });
   }
 });
 
@@ -210,13 +198,13 @@ router.get('/', authMiddleware, adminOnly, async (req, res) => {
 router.get('/:id', authMiddleware, adminOnly, async (req, res) => {
   if (!isDbConnected()) return res.status(503).json({ error: 'db_unavailable' });
   try {
-    const row = await StudentRegistration.findById(req.params.id).lean();
+    const row = await InternApplication.findById(req.params.id).lean();
     if (!row) return res.status(404).json({ error: 'Not found' });
     const resolved = withResolvedDocUrls(req, row);
     resolved.submittedDocFields = DOC_FIELDS.filter((f) => !!row[f]);
     res.json(resolved);
   } catch (err) {
-    console.warn('[student-registrations] GET single failed:', err.message);
+    console.warn('[intern-applications] GET single failed:', err.message);
     res.status(503).json({ error: 'db_unavailable' });
   }
 });
@@ -230,7 +218,7 @@ router.patch('/:id', authMiddleware, adminOnly,
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const row = await StudentRegistration.findById(req.params.id);
+    const row = await InternApplication.findById(req.params.id);
     if (!row) return res.status(404).json({ error: 'Not found' });
 
     if (Object.hasOwn(req.body, 'requirementsReceived')) row.requirementsReceived = req.body.requirementsReceived;
@@ -242,7 +230,7 @@ router.patch('/:id', authMiddleware, adminOnly,
     }
     row.updatedAt = new Date();
     await row.save();
-    broadcastStudentRegistrationChange();
+    broadcastInternApplicationChange();
     res.json(row);
   }
 );
@@ -252,7 +240,7 @@ router.post('/:id/reject', authMiddleware, adminOnly,
   body('reason').optional().trim(),
   async (req, res) => {
     if (!isDbConnected()) return res.status(503).json({ error: 'Database unavailable' });
-    const row = await StudentRegistration.findById(req.params.id);
+    const row = await InternApplication.findById(req.params.id);
     if (!row) return res.status(404).json({ error: 'Not found' });
     if (row.lmsProvisioned) return res.status(400).json({ error: 'Cannot reject a student whose LMS account is already provisioned.' });
 
@@ -260,7 +248,7 @@ router.post('/:id/reject', authMiddleware, adminOnly,
     row.rejectionReason = req.body.reason || '';
     row.updatedAt = new Date();
     await row.save();
-    broadcastStudentRegistrationChange();
+    broadcastInternApplicationChange();
     res.json({ rejected: true, id: row._id });
   }
 );
@@ -268,7 +256,7 @@ router.post('/:id/reject', authMiddleware, adminOnly,
 // ── Admin: restore rejected application back to pending ───────────────────────
 router.post('/:id/restore', authMiddleware, adminOnly, async (req, res) => {
   if (!isDbConnected()) return res.status(503).json({ error: 'Database unavailable' });
-  const row = await StudentRegistration.findById(req.params.id);
+  const row = await InternApplication.findById(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   if (row.status !== 'rejected') return res.status(400).json({ error: 'Application is not rejected.' });
 
@@ -276,14 +264,14 @@ router.post('/:id/restore', authMiddleware, adminOnly, async (req, res) => {
   row.rejectionReason = '';
   row.updatedAt = new Date();
   await row.save();
-  broadcastStudentRegistrationChange();
+  broadcastInternApplicationChange();
   res.json({ restored: true, status: row.status });
 });
 
 // ── Admin: provision LMS account ─────────────────────────────────────────────
 router.post('/:id/provision-lms', authMiddleware, adminOnly, async (req, res) => {
   if (!isDbConnected()) return res.status(503).json({ error: 'Database unavailable' });
-  const row = await StudentRegistration.findById(req.params.id);
+  const row = await InternApplication.findById(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   if (row.status === 'rejected') return res.status(400).json({ error: 'Cannot provision LMS for a rejected application.' });
   if (row.lmsProvisioned) return res.status(400).json({ error: 'LMS account already provisioned for this student.' });
@@ -330,7 +318,7 @@ router.post('/:id/provision-lms', authMiddleware, adminOnly, async (req, res) =>
       });
     }
 
-    broadcastStudentRegistrationChange();
+    broadcastInternApplicationChange();
     publishContentChange('users');
     return res.json({
       provisioned: true,
@@ -371,7 +359,7 @@ router.post('/:id/provision-lms', authMiddleware, adminOnly, async (req, res) =>
     });
   }
 
-  broadcastStudentRegistrationChange();
+  broadcastInternApplicationChange();
   publishContentChange('users');
   res.json({
     provisioned: true,
