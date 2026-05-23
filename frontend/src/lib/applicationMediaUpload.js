@@ -71,8 +71,8 @@ export function isStorageUnavailableError(err) {
   );
 }
 
-/** Max bytes per file stored in Firestore subcollection (under 1 MiB doc limit). */
-export const MAX_FIRESTORE_ATTACHMENT_BYTES = 850_000;
+// 3 MB inline limit — covers typical scanned PDFs without needing Firebase Storage CORS
+export const MAX_FIRESTORE_ATTACHMENT_BYTES = 3_000_000;
 
 export function parseDataUrl(dataUrl) {
   const match = dataUrl.trim().match(/^data:([^;,]+)?(?:;base64)?,(.+)$/s);

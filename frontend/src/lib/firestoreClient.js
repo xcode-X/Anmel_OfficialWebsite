@@ -310,12 +310,30 @@ async function uploadScholarshipFileToStorage(appId, field, parsed, fileName) {
     const downloadUrl = await getDownloadURL(storageRef);
     return downloadUrl;
   } catch (e) {
-    console.warn('[scholarship-files] Storage upload failed:', field, e?.message || e);
+    const msg = String(e?.message || e?.code || e || '').toLowerCase();
+    const isCors =
+      msg.includes('cors') ||
+      msg.includes('err_failed') ||
+      msg.includes('access control') ||
+      msg.includes('preflight') ||
+      msg.includes('failed to fetch') ||
+      msg.includes('network') ||
+      e?.code === 'storage/unknown';
+    if (isCors) {
+      console.info('[scholarship-files] Storage CORS unavailable — will use Firestore inline for:', field);
+    } else {
+      console.warn('[scholarship-files] Storage upload failed:', field, e?.message || e);
+    }
     return null;
   }
 }
 
-/** Store uploads in Firebase Storage when possible; small files also in Firestore subcollection. */
+/**
+ * Store uploads in Firestore (inline subcollection) with Firebase Storage as bonus.
+ * IMPORTANT: Firestore inline is ALWAYS tried first so data is never lost to CORS errors.
+ * Files ≤ 3 MB → Firestore subcollection (base64 dataUrl).
+ * Files > 3 MB → try Firebase Storage; if CORS blocks it, fall back to metadata-only.
+ */
 export async function saveScholarshipApplicationFiles(appId, sourceBody, fileNames = {}) {
   const db = getFirebaseDb();
   const results = [];
@@ -330,13 +348,36 @@ export async function saveScholarshipApplicationFiles(appId, sourceBody, fileNam
 
     if (!parsed?.bytes?.length) continue;
 
-    const useInline = parsed.bytes.length <= MAX_FIRESTORE_ATTACHMENT_BYTES;
-    let downloadUrl = null;
+    const canInline = parsed.bytes.length <= MAX_FIRESTORE_ATTACHMENT_BYTES;
 
-    if (!useInline) {
-      downloadUrl = await uploadScholarshipFileToStorage(appId, field, parsed, fileName);
+    if (canInline) {
+      // Primary path: store file bytes inline in Firestore (no CORS needed)
+      await setDoc(
+        fileRef,
+        stripUndefined({
+          field,
+          fileName,
+          mimeType: parsed.mime,
+          dataUrl: raw,
+          size: parsed.bytes.length,
+          createdAt: serverTimestamp(),
+        }),
+      );
+      // Also try Storage upload as a bonus (better admin download experience)
+      uploadScholarshipFileToStorage(appId, field, parsed, fileName)
+        .then(async (downloadUrl) => {
+          if (downloadUrl) {
+            await setDoc(fileRef, { downloadUrl, storage: 'firebase', dataUrl: null }, { merge: true }).catch(() => {});
+            await updateDocument('scholarshipApplications', appId, { [field]: downloadUrl }, { resource: 'scholarship-applications' }).catch(() => {});
+          }
+        })
+        .catch(() => {}); // Storage bonus is fire-and-forget
+      results.push({ field, stored: true, fileName });
+      continue;
     }
 
+    // Large file (> 3 MB): try Firebase Storage
+    const downloadUrl = await uploadScholarshipFileToStorage(appId, field, parsed, fileName);
     if (downloadUrl) {
       await setDoc(
         fileRef,
@@ -360,40 +401,7 @@ export async function saveScholarshipApplicationFiles(appId, sourceBody, fileNam
       continue;
     }
 
-    if (useInline) {
-      await setDoc(
-        fileRef,
-        stripUndefined({
-          field,
-          fileName,
-          mimeType: parsed.mime,
-          dataUrl: raw,
-          size: parsed.bytes.length,
-          createdAt: serverTimestamp(),
-        }),
-      );
-      results.push({ field, stored: true, fileName });
-      continue;
-    }
-
-    downloadUrl = await uploadScholarshipFileToStorage(appId, field, parsed, fileName);
-    if (downloadUrl) {
-      await setDoc(
-        fileRef,
-        stripUndefined({
-          field,
-          fileName,
-          mimeType: parsed.mime,
-          downloadUrl,
-          storage: 'firebase',
-          size: parsed.bytes.length,
-          createdAt: serverTimestamp(),
-        }),
-      );
-      results.push({ field, stored: true, fileName, storage: true });
-      continue;
-    }
-
+    // Storage failed (CORS or other): record metadata only, team can follow up
     await setDoc(
       fileRef,
       stripUndefined({
