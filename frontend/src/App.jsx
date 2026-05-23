@@ -29,7 +29,7 @@ const Education = lazy(() => import('./pages/Education'));
 const CourseDetail = lazy(() =>
   import('./pages/Education').then((m) => ({ default: m.CourseDetail }))
 );
-const CourseApplication = lazy(() => import('./pages/CourseApplication'));
+
 const StudentPortal = lazy(() => import('./pages/StudentPortal'));
 const StudentAccessSetup = lazy(() => import('./pages/StudentAccessSetup'));
 const ApplicationSecurityChecker = lazy(() => import('./pages/ApplicationSecurityChecker'));
@@ -96,7 +96,7 @@ function App() {
                 <Route path="services/:slug" element={<ServiceDetail />} />
                 <Route path="education" element={<Education />} />
                 <Route path="education/:slug" element={<CourseDetail />} />
-                <Route path="education/:slug/apply" element={<CourseApplication />} />
+
                 <Route path="student" element={<StudentPortal />} />
                 <Route path="student/access" element={<StudentAccessSetup />} />
                 <Route path="checker" element={<Navigate to="/application-security-checker" replace />} />
@@ -134,8 +134,7 @@ function App() {
                 <Route path="blog" element={<AdminBlog />} />
                 <Route path="case-studies" element={<AdminCaseStudies />} />
                 <Route path="lms" element={<AdminLmsContent />} />
-                <Route path="students" element={<Navigate to={`${ADMIN_BASE}/scholarships`} replace />} />
-                <Route path="students/:id" element={<Navigate to={`${ADMIN_BASE}/scholarships`} replace />} />
+
 
                 <Route path="contacts" element={<AdminContacts />} />
                 <Route path="pentest-results" element={<AdminPenTestResults />} />

@@ -399,10 +399,17 @@ function UniversityFormPanel({ onClose, onSaved, university = null }) {
               </p>
             )}
             {lookupError && !lookingUp && (
-              <p className="mt-2 text-xs text-amber-400 flex items-center gap-1.5">
-                <AlertCircle className="w-3.5 h-3.5" />
-                {lookupError}
-              </p>
+              <div className="mt-2 flex items-start gap-1.5 rounded-xl bg-amber-500/8 border border-amber-500/15 px-3 py-2.5">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-amber-400">{lookupError}</p>
+                  {!lookupDone && (
+                    <p className="text-xs text-white/35 mt-0.5">
+                      You can still fill in the name, country, and other fields manually below.
+                    </p>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 

@@ -250,17 +250,18 @@ export default function CourseSyllabusModal({ course, open, onClose }) {
               )}
 
               <div className="mt-8 border-t border-stone-200 pt-6">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-stone-500">Apply for this program</h3>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-stone-500">Interested in this program?</h3>
                 <p className="mt-1 text-sm text-stone-600">
-                  Continue to the full application form for <strong className="text-stone-800">{item?.title || course.title}</strong>.
+                  Reach out to our admissions team for enrollment information about{' '}
+                  <strong className="text-stone-800">{item?.title || course.title}</strong>.
                 </p>
                 <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
                   <Link
-                    to={`/education/${course.slug}/apply`}
+                    to="/contact"
                     onClick={onClose}
                     className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#0EA5E9] py-3.5 text-sm font-semibold text-white shadow-lg shadow-sky-200/30 transition hover:bg-[#0284C7]"
                   >
-                    Apply now
+                    Contact admissions
                     <ArrowRight className="h-4 w-4" strokeWidth={2} />
                   </Link>
                   <button

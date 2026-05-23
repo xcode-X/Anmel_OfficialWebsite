@@ -142,7 +142,7 @@ export default function About() {
                 <span className="text-[#A78BFA]">Engineering Excellence.</span>
               </motion.h1>
               <motion.p variants={heroItem} className="mt-6 text-lg text-stone-200 leading-relaxed">
-                We are a cybersecurity and secure web engineering company based in Monrovia, Liberia. Our team combines deep technical expertise with a commitment to protecting the digital assets of businesses worldwide—whether you are a startup, a regulated enterprise, or a government body.
+                We are a cybersecurity and secure web engineering company based in Monrovia, Liberia. Our team combines deep technical expertise with a commitment to protecting the digital assets of businesses worldwide whether you are a startup, a regulated enterprise, or a government body.
               </motion.p>
               <motion.p variants={heroItem} className="mt-4 text-stone-300 leading-relaxed">
                 We don’t just point out risks; we help you fix them, document them, and maintain them. That’s why our clients stay with us for the long term.
@@ -569,7 +569,7 @@ export default function About() {
               How engagements look day to day
             </motion.h2>
             <motion.p variants={heroItem} className="mt-3 text-stone-600">
-              Workshops, architecture reviews, and hands-on testing—documented so your teams can act without guesswork.
+              Workshops, architecture reviews, and hands-on testing documented so your teams can act without guesswork.
             </motion.p>
           </motion.div>
           <div className="grid md:grid-cols-3 gap-6 lg:gap-8">
@@ -894,7 +894,7 @@ export default function About() {
               Our journey
             </motion.h2>
             <motion.p variants={heroItem} className="mt-4 text-stone-300 text-lg leading-relaxed">
-              From a focused team in Monrovia to a trusted partner for enterprises—three chapters of growth, one thread of excellence.
+              From a focused team in Monrovia to a trusted partner for enterprises three chapters of growth, one thread of excellence.
             </motion.p>
           </motion.div>
 
@@ -1090,7 +1090,7 @@ export default function About() {
               Our methodology
             </motion.h2>
             <motion.p variants={heroItem} className="mt-4 text-stone-600 max-w-2xl">
-              A repeatable, security-first loop—animated at every step so your program keeps pace with real risk.
+              A repeatable, security-first loop animated at every step so your program keeps pace with real risk.
             </motion.p>
           </motion.div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 lg:gap-4">

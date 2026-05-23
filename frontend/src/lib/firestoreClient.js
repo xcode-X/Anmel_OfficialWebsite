@@ -1097,6 +1097,8 @@ export async function computeAdminStatsFromFirestore() {
     contactsRead,
     studentsTotal,
     studentsPending,
+    scholarshipAppsTotal,
+    scholarshipAppsPending,
     scholarshipsTotal,
     scholarshipsLive,
     universitiesTotal,
@@ -1109,6 +1111,8 @@ export async function computeAdminStatsFromFirestore() {
     countCollection('caseStudies'),
     countCollection('contactSubmissions'),
     countCollection('contactSubmissions', where('read', '==', true)),
+    countCollection('studentRegistrations'),
+    countCollection('studentRegistrations', where('status', '==', 'pending')),
     countCollection('scholarshipApplications'),
     countCollection('scholarshipApplications', where('status', '==', 'pending')),
     countCollection('scholarships'),
@@ -1127,6 +1131,7 @@ export async function computeAdminStatsFromFirestore() {
       unread: Math.max(0, contactsTotal - contactsRead),
     },
     students: { total: studentsTotal, pending: studentsPending },
+    scholarshipApplications: { total: scholarshipAppsTotal, pending: scholarshipAppsPending },
     scholarships: { total: scholarshipsTotal, live: scholarshipsLive },
     universities: { total: universitiesTotal },
     agents: { total: agentsTotal, pending: agentsPending },
@@ -1135,6 +1140,7 @@ export async function computeAdminStatsFromFirestore() {
     source: 'firestore',
   };
 }
+
 
 export async function createSecurityScanRecord(data) {
   const result = data.result || data;

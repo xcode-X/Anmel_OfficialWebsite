@@ -186,7 +186,7 @@ export default function AdminLogin() {
               <span className="text-[#2FA084]">Anmel Inc</span> Admin
             </h1>
             <p className="text-sm leading-relaxed text-white/40 max-w-sm mb-7">
-              Secure command center for scholarship and intern applications, LMS publishing, blog management, and
+              Secure command center for scholarships, LMS publishing, blog management, and
               operations monitoring. Live metrics refresh every minute.
             </p>
 

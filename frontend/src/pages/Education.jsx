@@ -523,10 +523,10 @@ function CourseDetailBody({ slug }) {
             </div>
             <div className="mt-10 flex flex-wrap gap-4">
               <Link
-                to={`/education/${slug}/apply`}
+                to="/contact"
                 className="inline-flex items-center gap-2 rounded-full bg-[#F97316] px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-orange-900/30 hover:bg-[#EA580C]"
               >
-                Apply now
+                Contact admissions
                 <ArrowRight className="h-4 w-4" strokeWidth={2} />
               </Link>
               <button
@@ -751,10 +751,10 @@ function CourseDetailBody({ slug }) {
                 )}
               </dl>
               <Link
-                to={`/education/${slug}/apply`}
+                to="/contact"
                 className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-[#F97316] py-3.5 text-sm font-semibold text-white shadow-lg shadow-orange-200/40 hover:bg-[#EA580C]"
               >
-                Apply now
+                Contact admissions
                 <ArrowRight className="h-4 w-4" strokeWidth={2} />
               </Link>
               <button

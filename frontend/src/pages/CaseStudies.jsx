@@ -285,7 +285,7 @@ export function CaseStudiesList() {
               Case Studies
             </h1>
             <p className="mt-5 max-w-2xl text-lg sm:text-xl text-stone-600 leading-relaxed">
-              Documented engagements from security assessments, compliance programmes, and software delivery — with the context, approach, and measurable outcomes.
+              Documented engagements from security assessments, compliance programmes, and software delivery with the context, approach, and measurable outcomes.
             </p>
             <p className="mt-3 max-w-xl text-sm text-stone-500 leading-relaxed">
               Client names are anonymised where required. Each study follows the same structure so you can compare scope and results across sectors.
@@ -311,11 +311,10 @@ export function CaseStudiesList() {
                 key={cat}
                 type="button"
                 onClick={() => setCategory(cat)}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition-all border ${
-                  category === cat
+                className={`rounded-full px-4 py-2 text-sm font-semibold transition-all border ${category === cat
                     ? 'bg-teal-700 text-white border-teal-700 shadow-sm'
                     : 'bg-white text-stone-600 border-stone-200 hover:border-stone-300'
-                }`}
+                  }`}
               >
                 {cat}
               </button>

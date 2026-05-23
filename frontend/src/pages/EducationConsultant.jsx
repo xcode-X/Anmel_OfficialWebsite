@@ -157,7 +157,7 @@ export default function EducationConsultant() {
               className="text-4xl sm:text-5xl lg:text-[54px] font-bold text-stone-900 leading-[1.12] tracking-tight"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Your Future at <br/>
+              Your Future at <br />
               <span className="text-orange">Global</span> <span className="text-sky">Institutions</span>
             </motion.h1>
 
@@ -168,9 +168,9 @@ export default function EducationConsultant() {
               transition={{ delay: 0.2 }}
               className="mt-6 text-base sm:text-lg text-stone-600 leading-relaxed max-w-xl"
             >
-              Expert guidance for international admissions, scholarships, and visa processing. Partnering with top universities to bring the world to your fingertips.
+              Expert guidance for international admissions, scholarships, and VISA processing. Partnering with top universities to bring the world to your fingertips.
             </motion.p>
-            
+
             {/* CTA Buttons - Pill Shaped */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -185,7 +185,7 @@ export default function EducationConsultant() {
                 <span>Apply Now</span>
                 <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" strokeWidth={2.2} />
               </Link>
-              
+
               <a
                 href="#consultation"
                 className="inline-flex items-center justify-center gap-2 border border-stone-300 hover:border-stone-400 bg-white/50 text-stone-700 px-7 py-3.5 rounded-full font-bold text-sm sm:text-base hover:bg-white transition-all duration-200"
@@ -206,21 +206,21 @@ export default function EducationConsultant() {
             />
 
             {/* Hero Image - Big and Transparent Cutout */}
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ delay: 0.35, type: "spring", stiffness: 45 }}
               className="relative z-10 w-full max-w-[420px] drop-shadow-[0_20px_50px_rgba(245,158,11,0.2)] select-none pointer-events-none pb-20"
             >
-              <img 
-                src="/happy_student_no_bg.png" 
-                alt="Happy Student celebrating admission" 
+              <img
+                src="/happy_student_no_bg.png"
+                alt="Happy Student celebrating admission"
                 className="w-full h-auto object-contain hover:scale-105 transition-transform duration-500"
               />
             </motion.div>
 
             {/* Real-time Notification Board (Overlapping at the bottom) */}
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5 }}
@@ -233,7 +233,7 @@ export default function EducationConsultant() {
                 </div>
                 <h3 className="text-white font-bold tracking-wide text-sm">Live Announcements</h3>
               </div>
-              
+
               <div className="flex-1 overflow-hidden relative mask-image-vertical">
                 <div className="animate-marquee-vertical flex flex-col gap-4 absolute w-full">
                   {[...announcements, ...announcements].map((ann, idx) => (
@@ -402,52 +402,52 @@ export default function EducationConsultant() {
         </div>
       </section>
       {testimonials.length > 0 && (
-      <section className="py-28 bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-20">
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-display)' }}>Student Voices</h2>
-            <p className="mt-4 text-slate-600 text-lg">Don't just take our word for it. Hear from our successful alumni.</p>
+        <section className="py-28 bg-white border-b border-slate-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-20">
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-display)' }}>Student Voices</h2>
+              <p className="mt-4 text-slate-600 text-lg">Don't just take our word for it. Hear from our successful alumni.</p>
+            </div>
+            <div className="grid md:grid-cols-3 gap-8">
+              {testimonials.map((t, i) => {
+                const avatarSrc = t.avatar || t.image;
+                const initials = t.name ? t.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '?';
+                return (
+                  <motion.div
+                    key={t._id || i}
+                    initial={{ opacity: 0, y: 30 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: i * 0.1 }}
+                    className="bg-slate-50 p-8 sm:p-10 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 relative group hover:-translate-y-2 transition-transform duration-300"
+                  >
+                    <Quote className="absolute top-8 right-8 w-12 h-12 text-slate-200 group-hover:text-sky-100 transition-colors" />
+                    <div className="flex gap-1 text-amber-400 mb-6 relative z-10">
+                      {[1, 2, 3, 4, 5].map(star => <Star key={star} className="w-5 h-5 fill-current" />)}
+                    </div>
+                    <p className="text-slate-700 text-lg leading-relaxed mb-8 relative z-10">"{t.quote}"</p>
+                    {t.outcome && (
+                      <div className="mb-6 inline-flex items-center gap-2 bg-sky-50 border border-sky-100 text-sky-600 text-xs font-semibold rounded-full px-3 py-1.5">
+                        {t.outcome}
+                      </div>
+                    )}
+                    <div className="mt-auto pt-6 flex items-center gap-4 border-t border-slate-200 relative z-10">
+                      <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-white shadow-md bg-sky-100 flex-shrink-0 flex items-center justify-center text-sky-700 font-bold">
+                        {avatarSrc ? <img src={avatarSrc} alt={t.name} className="w-full h-full object-cover" /> : initials}
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900 text-lg">{t.name}</div>
+                        {(t.role || t.company) && <div className="text-sm font-semibold text-sky-600">{[t.role, t.company].filter(Boolean).join(' · ')}</div>}
+                        {t.program && <div className="text-sm font-semibold text-sky-600">{t.program}</div>}
+                        {t.uni && <div className="text-xs text-slate-500 mt-0.5">{t.uni}</div>}
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
           </div>
-          <div className="grid md:grid-cols-3 gap-8">
-            {testimonials.map((t, i) => {
-              const avatarSrc = t.avatar || t.image;
-              const initials = t.name ? t.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '?';
-              return (
-              <motion.div 
-                key={t._id || i} 
-                initial={{ opacity: 0, y: 30 }} 
-                whileInView={{ opacity: 1, y: 0 }} 
-                viewport={{ once: true }} 
-                transition={{ delay: i * 0.1 }} 
-                className="bg-slate-50 p-8 sm:p-10 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 relative group hover:-translate-y-2 transition-transform duration-300"
-              >
-                <Quote className="absolute top-8 right-8 w-12 h-12 text-slate-200 group-hover:text-sky-100 transition-colors" />
-                <div className="flex gap-1 text-amber-400 mb-6 relative z-10">
-                  {[1,2,3,4,5].map(star => <Star key={star} className="w-5 h-5 fill-current" />)}
-                </div>
-                <p className="text-slate-700 text-lg leading-relaxed mb-8 relative z-10">"{t.quote}"</p>
-                {t.outcome && (
-                  <div className="mb-6 inline-flex items-center gap-2 bg-sky-50 border border-sky-100 text-sky-600 text-xs font-semibold rounded-full px-3 py-1.5">
-                    {t.outcome}
-                  </div>
-                )}
-                <div className="mt-auto pt-6 flex items-center gap-4 border-t border-slate-200 relative z-10">
-                  <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-white shadow-md bg-sky-100 flex-shrink-0 flex items-center justify-center text-sky-700 font-bold">
-                    {avatarSrc ? <img src={avatarSrc} alt={t.name} className="w-full h-full object-cover" /> : initials}
-                  </div>
-                  <div>
-                    <div className="font-bold text-slate-900 text-lg">{t.name}</div>
-                    {(t.role || t.company) && <div className="text-sm font-semibold text-sky-600">{[t.role, t.company].filter(Boolean).join(' · ')}</div>}
-                    {t.program && <div className="text-sm font-semibold text-sky-600">{t.program}</div>}
-                    {t.uni && <div className="text-xs text-slate-500 mt-0.5">{t.uni}</div>}
-                  </div>
-                </div>
-              </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
+        </section>
       )}
 
       {/* Online Degree Program Stub */}
@@ -511,7 +511,7 @@ export default function EducationConsultant() {
                 <X className="w-5 h-5" />
               </button>
               <div className="p-4 bg-[#2A0B30] border-b border-white/10">
-                <h3 className="text-white font-bold text-lg flex items-center gap-2"><PlayCircle className="w-5 h-5 text-sky-400"/> {activeVideo.name} Campus Tour</h3>
+                <h3 className="text-white font-bold text-lg flex items-center gap-2"><PlayCircle className="w-5 h-5 text-sky-400" /> {activeVideo.name} Campus Tour</h3>
               </div>
               <div className="aspect-video w-full bg-slate-900">
                 <video src={activeVideo.videoUrl} controls autoPlay className="w-full h-full" />
@@ -521,7 +521,8 @@ export default function EducationConsultant() {
         )}
       </AnimatePresence>
 
-      <style dangerouslySetInnerHTML={{__html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @keyframes marquee-vertical {
           0% { transform: translateY(0); }
           100% { transform: translateY(-50%); }

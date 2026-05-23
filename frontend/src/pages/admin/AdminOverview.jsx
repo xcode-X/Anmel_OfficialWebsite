@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import {
   BookOpen, Briefcase, Mail, ArrowRight, Plus,
   TrendingUp, Users, GraduationCap, Building2, Award,
-  MessageSquareQuote, RefreshCw,
+  MessageSquareQuote, RefreshCw, UserCheck,
 } from 'lucide-react';
 import { adminStatsApi, agentsApi, scholarshipApplicationsApi, EMPTY_ADMIN_STATS } from '../../lib/api';
 import { subscribeContentStream } from '../../lib/contentStream';

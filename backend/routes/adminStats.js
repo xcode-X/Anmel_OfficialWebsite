@@ -3,6 +3,7 @@ import BlogPost from '../models/BlogPost.js';
 import CaseStudy from '../models/CaseStudy.js';
 import ContactSubmission from '../models/ContactSubmission.js';
 import ScholarshipApplication from '../models/ScholarshipApplication.js';
+import StudentRegistration from '../models/StudentRegistration.js';
 import Scholarship from '../models/Scholarship.js';
 import University from '../models/University.js';
 import Agent from '../models/Agent.js';
@@ -20,6 +21,7 @@ const EMPTY_STATS = {
   caseStudies: { total: 0 },
   contacts: { total: 0, unread: 0 },
   students: { total: 0, pending: 0 },
+  scholarshipApplications: { total: 0, pending: 0 },
   scholarships: { total: 0, live: 0 },
   universities: { total: 0 },
   agents: { total: 0, pending: 0 },
@@ -46,6 +48,8 @@ router.get('/stats', authMiddleware, adminOnly, async (req, res) => {
           caseStudies,
           contactsTotal,
           contactsUnread,
+          studentsTotal,
+          studentsPending,
           scholarshipAppsTotal,
           scholarshipAppsPending,
           scholarshipsTotal,
@@ -60,6 +64,8 @@ router.get('/stats', authMiddleware, adminOnly, async (req, res) => {
           CaseStudy.countDocuments().maxTimeMS(5000),
           ContactSubmission.countDocuments().maxTimeMS(5000),
           ContactSubmission.countDocuments({ read: { $ne: true } }).maxTimeMS(5000),
+          StudentRegistration.countDocuments().maxTimeMS(5000),
+          StudentRegistration.countDocuments({ status: 'pending' }).maxTimeMS(5000),
           ScholarshipApplication.countDocuments().maxTimeMS(5000),
           ScholarshipApplication.countDocuments({ status: 'pending' }).maxTimeMS(5000),
           Scholarship.countDocuments().maxTimeMS(5000),
@@ -74,7 +80,8 @@ router.get('/stats', authMiddleware, adminOnly, async (req, res) => {
           blog: { total: blogTotal, published: blogPublished },
           caseStudies: { total: caseStudies },
           contacts: { total: contactsTotal, unread: contactsUnread },
-          students: { total: scholarshipAppsTotal, pending: scholarshipAppsPending },
+          students: { total: studentsTotal, pending: studentsPending },
+          scholarshipApplications: { total: scholarshipAppsTotal, pending: scholarshipAppsPending },
           scholarships: { total: scholarshipsTotal, live: scholarshipsLive },
           universities: { total: universities },
           agents: { total: agentsTotal, pending: agentsPending },

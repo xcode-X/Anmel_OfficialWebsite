@@ -999,25 +999,81 @@ export const universitiesApi = {
     const firstUrl = normalized.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || normalized;
     const path = `/universities/lookup?url=${encodeURIComponent(firstUrl)}`;
     const apiUrl = path.startsWith('http') ? path : `${API}${path}`;
+
+    // ── Client-side Hipolabs fallback (CORS-enabled, no backend needed) ──────
+    async function hipolabsFallback() {
+      try {
+        const domain = new URL(firstUrl).hostname.replace(/^www\./, '');
+        // Search by the first meaningful part of the domain (e.g. "oxford" from "ox.ac.uk")
+        const nameParts = domain.split('.').filter((p) => p.length > 2 && !/^(ac|edu|com|org|net|co|gov|uk|us|in|au)$/.test(p));
+        const searchTerm = nameParts[0] || domain;
+        const hipoRes = await fetch(
+          `https://universities.hipolabs.com/search?name=${encodeURIComponent(searchTerm)}`,
+          { headers: { Accept: 'application/json' } },
+        );
+        if (!hipoRes.ok) return null;
+        const results = await hipoRes.json();
+        if (!Array.isArray(results) || results.length === 0) return null;
+        // Prefer a result whose domain or web_pages match the pasted URL
+        const match =
+          results.find((u) =>
+            (u.domains || []).some((d) => domain.includes(d) || d.includes(domain)) ||
+            (u.web_pages || []).some((p) => String(p).includes(domain)),
+          ) || results[0];
+        return {
+          website: firstUrl,
+          name: match.name || '',
+          country: match.country || '',
+          courses: [],
+          source: 'hipolabs',
+          lookupWarning: 'Partial auto-fill via public directory (name & country only). Start the backend server for full programme data.',
+        };
+      } catch {
+        return null;
+      }
+    }
+
     try {
       const res = await fetch(apiUrl, { headers: { 'Content-Type': 'application/json' } });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      // If Firebase Hosting (no backend) returns the SPA HTML instead of JSON
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || contentType.includes('text/html')) {
+        // Try Hipolabs client-side fallback before giving up
+        const hipoData = await hipolabsFallback();
+        if (hipoData) return hipoData;
         return {
           website: firstUrl,
           courses: [],
-          lookupWarning: data.error || `Lookup failed (${res.status})`,
+          lookupWarning: 'URL auto-fill requires the backend server to be running. Fill in the fields manually — everything still saves to Firestore.',
         };
       }
+      const data = await res.json().catch(() => ({}));
       return data;
     } catch (err) {
+      const msg = String(err?.message || '').toLowerCase();
+      const isOffline =
+        msg.includes('failed to fetch') ||
+        msg.includes('connection') ||
+        msg.includes('network') ||
+        msg.includes('err_connection') ||
+        msg.includes('econnrefused') ||
+        msg.includes('load failed');
+      if (isOffline) {
+        // Try Hipolabs client-side fallback
+        const hipoData = await hipolabsFallback();
+        if (hipoData) return hipoData;
+      }
       return {
         website: firstUrl,
         courses: [],
-        lookupWarning: err.message || 'Lookup unavailable',
+        lookupWarning: isOffline
+          ? 'URL auto-fill requires the backend server (port 5000) to be running locally. Fill in the fields manually — everything still saves to Firestore.'
+          : err.message || 'Lookup unavailable',
       };
     }
   },
+
+
   create: (data) =>
     cmsWrite(
       () => request('/universities', { method: 'POST', body: JSON.stringify(data) }),
@@ -1215,6 +1271,7 @@ export const EMPTY_ADMIN_STATS = {
   caseStudies: { total: 0 },
   contacts: { total: 0, unread: 0 },
   students: { total: 0, pending: 0 },
+  scholarshipApplications: { total: 0, pending: 0 },
   scholarships: { total: 0, live: 0 },
   universities: { total: 0 },
   agents: { total: 0, pending: 0 },
