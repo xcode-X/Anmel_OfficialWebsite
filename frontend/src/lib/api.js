@@ -1000,33 +1000,63 @@ export const universitiesApi = {
     const path = `/universities/lookup?url=${encodeURIComponent(firstUrl)}`;
     const apiUrl = path.startsWith('http') ? path : `${API}${path}`;
 
-    // ── Client-side Hipolabs fallback (CORS-enabled, no backend needed) ──────
-    async function hipolabsFallback() {
+    // ── Client-side fallback: microlink.io + Wikipedia (no backend, no API key) ──
+    async function clientSideLookup() {
       try {
-        const domain = new URL(firstUrl).hostname.replace(/^www\./, '');
-        // Search by the first meaningful part of the domain (e.g. "oxford" from "ox.ac.uk")
-        const nameParts = domain.split('.').filter((p) => p.length > 2 && !/^(ac|edu|com|org|net|co|gov|uk|us|in|au)$/.test(p));
-        const searchTerm = nameParts[0] || domain;
-        const hipoRes = await fetch(
-          `https://universities.hipolabs.com/search?name=${encodeURIComponent(searchTerm)}`,
-          { headers: { Accept: 'application/json' } },
+        // Step 1: microlink.io — extracts title, description, image from any URL
+        const mlRes = await fetch(
+          `https://api.microlink.io/?url=${encodeURIComponent(firstUrl)}&palette=false&audio=false&video=false&iframe=false`,
+          { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(12000) },
         );
-        if (!hipoRes.ok) return null;
-        const results = await hipoRes.json();
-        if (!Array.isArray(results) || results.length === 0) return null;
-        // Prefer a result whose domain or web_pages match the pasted URL
-        const match =
-          results.find((u) =>
-            (u.domains || []).some((d) => domain.includes(d) || d.includes(domain)) ||
-            (u.web_pages || []).some((p) => String(p).includes(domain)),
-          ) || results[0];
+        if (!mlRes.ok) return null;
+        const ml = await mlRes.json();
+        if (ml.status !== 'success') return null;
+
+        const rawTitle = ml.data?.title || '';
+        // Clean title: strip "| University Name" suffixes
+        const name = rawTitle.replace(/\s*[|–\-—:]\s*.{0,60}$/, '').trim() || rawTitle.trim();
+        const description = (ml.data?.description || '').slice(0, 400);
+        const image = ml.data?.image?.url || ml.data?.logo?.url || '';
+
+        if (!name) return null;
+
+        // Step 2: Wikipedia REST API — look up country from the university name
+        let country = '';
+        let founded = '';
+        let students = '';
+        try {
+          const wikiRes = await fetch(
+            `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`,
+            { signal: AbortSignal.timeout(6000) },
+          );
+          if (wikiRes.ok) {
+            const wiki = await wikiRes.json();
+            const extract = wiki.extract || '';
+            // Extract country
+            const countryMatch = extract.match(
+              /(?:located in|based in|situated in|university in|college in|institute in)\s+([A-Z][a-zA-Z\s]{2,30}?)(?:[,.\n]|$)/i,
+            ) || extract.match(/,\s*([A-Z][a-zA-Z\s]{2,25}?)\s*(?:is a|was founded|university)/i);
+            if (countryMatch) country = countryMatch[1].trim();
+            // Extract founded year
+            const foundedMatch = extract.match(/(?:founded|established|chartered)\s+(?:in\s+)?(\d{4})/i);
+            if (foundedMatch) founded = foundedMatch[1];
+            // Extract student count
+            const studMatch = extract.match(/([\d,]+)\s+(?:students|undergraduates)/i);
+            if (studMatch) students = studMatch[1].replace(/,/g, '') + '+';
+          }
+        } catch { /* Wikipedia optional */ }
+
         return {
           website: firstUrl,
-          name: match.name || '',
-          country: match.country || '',
+          name,
+          description,
+          country,
+          founded,
+          students,
+          image: /^https?:\/\//i.test(image) ? image : '',
           courses: [],
-          source: 'hipolabs',
-          lookupWarning: 'Partial auto-fill via public directory (name & country only). Start the backend server for full programme data.',
+          source: 'microlink',
+          lookupWarning: 'Auto-filled from the university website. Programmes must be added manually.',
         };
       } catch {
         return null;
@@ -1035,16 +1065,15 @@ export const universitiesApi = {
 
     try {
       const res = await fetch(apiUrl, { headers: { 'Content-Type': 'application/json' } });
-      // If Firebase Hosting (no backend) returns the SPA HTML instead of JSON
+      // Detect Firebase Hosting returning SPA HTML instead of JSON (no backend)
       const contentType = res.headers.get('content-type') || '';
       if (!res.ok || contentType.includes('text/html')) {
-        // Try Hipolabs client-side fallback before giving up
-        const hipoData = await hipolabsFallback();
-        if (hipoData) return hipoData;
+        const data = await clientSideLookup();
+        if (data) return data;
         return {
           website: firstUrl,
           courses: [],
-          lookupWarning: 'URL auto-fill requires the backend server to be running. Fill in the fields manually — everything still saves to Firestore.',
+          lookupWarning: 'Could not auto-fill from this URL. Fill in the fields manually — everything still saves to Firestore.',
         };
       }
       const data = await res.json().catch(() => ({}));
@@ -1059,20 +1088,18 @@ export const universitiesApi = {
         msg.includes('econnrefused') ||
         msg.includes('load failed');
       if (isOffline) {
-        // Try Hipolabs client-side fallback
-        const hipoData = await hipolabsFallback();
-        if (hipoData) return hipoData;
+        const data = await clientSideLookup();
+        if (data) return data;
       }
       return {
         website: firstUrl,
         courses: [],
         lookupWarning: isOffline
-          ? 'URL auto-fill requires the backend server (port 5000) to be running locally. Fill in the fields manually — everything still saves to Firestore.'
+          ? 'Could not reach the lookup service. Fill in the fields manually — everything still saves to Firestore.'
           : err.message || 'Lookup unavailable',
       };
     }
   },
-
 
   create: (data) =>
     cmsWrite(
