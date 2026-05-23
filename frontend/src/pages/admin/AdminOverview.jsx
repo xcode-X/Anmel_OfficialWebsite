@@ -1,9 +1,9 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   BookOpen, Briefcase, Mail, ArrowRight, Plus,
-  TrendingUp, Users, GraduationCap, UserCheck, Building2, Award,
+  TrendingUp, Users, GraduationCap, Building2, Award,
   MessageSquareQuote, RefreshCw,
 } from 'lucide-react';
 import { adminStatsApi, agentsApi, scholarshipApplicationsApi, EMPTY_ADMIN_STATS } from '../../lib/api';
@@ -90,7 +90,6 @@ const quickActions = [
   { to: `${ADMIN_BASE}/blog`,         label: 'New blog post',       icon: BookOpen,    hint: 'Publish an article' },
   { to: `${ADMIN_BASE}/case-studies`, label: 'New case study',      icon: Briefcase,   hint: 'Add a portfolio item' },
   { to: `${ADMIN_BASE}/scholarships/new`, label: 'Add scholarship', icon: Award,       hint: 'Publish a funding listing' },
-  { to: `${ADMIN_BASE}/intern-applications`, label: 'Intern application', icon: UserCheck, hint: 'Academy program applicants' },
   { to: `${ADMIN_BASE}/lms`,          label: 'LMS content',         icon: GraduationCap, hint: 'Manage courses' },
   { to: `${ADMIN_BASE}/contacts`,     label: 'View enquiries',      icon: Mail,        hint: 'Respond to messages' },
 ];
