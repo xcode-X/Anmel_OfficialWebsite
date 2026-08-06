@@ -1,6 +1,7 @@
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { getFirestore } from '../config/firebase.js';
-import { withDbQuery } from './dbReady.js';
+import { isFirebaseConnected, withDbQuery } from './dbReady.js';
+import { localStore } from './localDbStore.js';
 
 export const COLLECTIONS = {
   users: 'users',
@@ -136,6 +137,27 @@ class FirestoreQuery {
   }
 
   async _run() {
+    if (!isFirebaseConnected()) {
+      if (this.id) {
+        const found = localStore.findById(this.collectionName, this.id);
+        const doc = applyProjection(found, { exclude: this._exclude, includeOnly: this._includeOnly });
+        return doc ? [doc] : [];
+      }
+      let docs = localStore.find(this.collectionName, this.filter);
+      if (this._sort.length && docs.length > 1) {
+        const [field, dir] = this._sort[0];
+        docs.sort((a, b) => {
+          const av = a[field];
+          const bv = b[field];
+          if (av < bv) return dir === 'desc' ? 1 : -1;
+          if (av > bv) return dir === 'desc' ? -1 : 1;
+          return 0;
+        });
+      }
+      if (this._limit && docs.length > this._limit) docs = docs.slice(0, this._limit);
+      return docs.map((d) => applyProjection(d, { exclude: this._exclude, includeOnly: this._includeOnly }));
+    }
+
     if (this.id) {
       const snap = await col(this.collectionName).doc(String(this.id)).get();
       let doc = toApiDoc(snap);
@@ -214,6 +236,7 @@ export function wrapMutable(doc, collectionName) {
 }
 
 export async function bumpRealtime(resource, meta = {}) {
+  if (!isFirebaseConnected()) return;
   try {
     await col(COLLECTIONS.meta).doc(META_REALTIME_DOC).set(
       { ts: FieldValue.serverTimestamp(), resource, ...meta },
@@ -225,6 +248,9 @@ export async function bumpRealtime(resource, meta = {}) {
 }
 
 export async function listAll(collectionName, opts = {}) {
+  if (!isFirebaseConnected()) {
+    return localStore.find(collectionName, opts.filter || {});
+  }
   const q = new FirestoreQuery(collectionName, { filter: opts.filter || {} });
   if (opts.orderBy) q.sort(Object.fromEntries(opts.orderBy));
   if (opts.limit) q.limit(opts.limit);
@@ -233,11 +259,18 @@ export async function listAll(collectionName, opts = {}) {
 }
 
 export async function getById(collectionName, id) {
+  if (!isFirebaseConnected()) {
+    return localStore.findById(collectionName, id);
+  }
   const snap = await col(collectionName).doc(String(id)).get();
   return toApiDoc(snap);
 }
 
 export async function findOne(collectionName, filter = {}) {
+  if (!isFirebaseConnected()) {
+    const list = localStore.find(collectionName, filter);
+    return list[0] || null;
+  }
   const q = new FirestoreQuery(collectionName, { filter });
   q._single = true;
   q._limit = 1;
@@ -245,6 +278,9 @@ export async function findOne(collectionName, filter = {}) {
 }
 
 export async function createDoc(collectionName, data, id) {
+  if (!isFirebaseConnected()) {
+    return localStore.create(collectionName, { ...data, id });
+  }
   const now = FieldValue.serverTimestamp();
   const payload = { ...data, createdAt: data.createdAt || now, updatedAt: data.updatedAt || now };
   const ref = id ? col(collectionName).doc(String(id)) : col(collectionName).doc();
@@ -254,6 +290,9 @@ export async function createDoc(collectionName, data, id) {
 }
 
 export async function updateDoc(collectionName, id, patch) {
+  if (!isFirebaseConnected()) {
+    return localStore.update(collectionName, id, patch);
+  }
   const ref = col(collectionName).doc(String(id));
   const clean = { ...patch };
   delete clean._id;
@@ -264,12 +303,18 @@ export async function updateDoc(collectionName, id, patch) {
 }
 
 export async function deleteDoc(collectionName, id) {
+  if (!isFirebaseConnected()) {
+    return localStore.delete(collectionName, id);
+  }
   const before = await getById(collectionName, id);
   await col(collectionName).doc(String(id)).delete();
   return before;
 }
 
 export async function countDocs(collectionName, filter = {}) {
+  if (!isFirebaseConnected()) {
+    return localStore.find(collectionName, filter).length;
+  }
   const rows = await listAll(collectionName, { filter });
   return rows.length;
 }

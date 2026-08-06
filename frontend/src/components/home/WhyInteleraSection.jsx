@@ -1,55 +1,55 @@
-﻿import { motion } from 'framer-motion';
-import { Award, Zap, Headphones } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Award, Zap, Headphones, GraduationCap, Code2, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 const metrics = [
-  { value: '98%', label: 'Client satisfaction', color: 'sky' },
-  { value: '150+', label: 'Projects delivered', color: 'purple' },
-  { value: '24hr', label: 'Avg. response time', color: 'orange' },
+  { value: '10,000+', label: 'Students Placed Worldwide', color: 'sky' },
+  { value: '150+', label: 'Web & Cloud Applications Built', color: 'purple' },
+  { value: '99.9%', label: 'Security & Uptime Assurance', color: 'orange' },
 ];
 
 const points = [
   {
-    text: 'Elite security talent',
-    icon: Award,
+    text: 'Global Education Pathways',
+    icon: GraduationCap,
     description:
-      'Our team brings years of hands-on experience in penetration testing, secure development, and compliance. We stay current with emerging threats and frameworks so you get actionable, up-to-date guidance.',
-    details: ['Certified practitioners', 'Cross-industry experience', 'Plain-language reporting'],
+      'We partner with over 500 accredited international universities in the US, UK, Canada, Europe, and Australia to secure admissions and full scholarships for deserving students.',
+    details: ['100% Tuition Scholarship Guidance', 'Direct University Placement', 'Complete Visa Support'],
     accentColor: 'sky',
   },
   {
-    text: 'Proven methodologies',
-    icon: Zap,
+    text: 'Custom Web & Software Engineering',
+    icon: Code2,
     description:
-      'We use repeatable, risk-based approaches—from scoping and assessment through remediation and handover. Every engagement follows documented processes so outcomes are consistent and defensible.',
-    details: ['Structured scoping', 'Phased remediation roadmaps', 'Runbooks and documentation'],
+      'From responsive web applications to enterprise cloud portals and high-conversion e-commerce systems, our software engineers build modern products tailored to your goals.',
+    details: ['Modern Full-Stack Architecture', 'Responsive Mobile-First UI/UX', 'Cloud Deployment & DevOps'],
     accentColor: 'purple',
   },
   {
-    text: 'Continuous monitoring',
-    icon: Headphones,
+    text: 'Enterprise Cyber Security Defense',
+    icon: ShieldCheck,
     description:
-      'Security is not a one-off project. We help you establish ongoing detection, response, and improvement so you can sustain controls and adapt as your environment and threats evolve.',
-    details: ['SIEM and detection design', 'Incident response playbooks', 'Regular health checks'],
+      'Protecting applications, user data, and IT infrastructure against cyber threats with penetration testing, security audits, ISO compliance, and instant web scans.',
+    details: ['Web & API Penetration Testing', 'ISO 27001 & SOC 2 Audits', 'Instant Website Security Checker'],
     accentColor: 'orange',
   },
 ];
 
 const accentMap = {
-  sky:    { bg: 'bg-sky/10',    icon: 'text-sky',    bar: 'bg-sky',    dot: 'bg-sky',    hover: 'hover:border-sky/40 hover:shadow-sky/10' },
-  purple: { bg: 'bg-purple/10', icon: 'text-purple', bar: 'bg-purple', dot: 'bg-purple', hover: 'hover:border-purple/40 hover:shadow-purple/10' },
-  orange: { bg: 'bg-orange/10', icon: 'text-orange', bar: 'bg-orange', dot: 'bg-orange', hover: 'hover:border-orange/40 hover:shadow-orange/10' },
+  sky:    { bg: 'bg-[#2FA084]/10', icon: 'text-[#2FA084]', bar: 'bg-[#2FA084]', dot: 'bg-[#2FA084]', hover: 'hover:border-[#2FA084]/40 hover:shadow-[#2FA084]/10' },
+  purple: { bg: 'bg-[#5D1C6A]/10', icon: 'text-[#5D1C6A]', bar: 'bg-[#5D1C6A]', dot: 'bg-[#5D1C6A]', hover: 'hover:border-[#5D1C6A]/40 hover:shadow-[#5D1C6A]/10' },
+  orange: { bg: 'bg-[#0EA5E9]/10', icon: 'text-[#0EA5E9]', bar: 'bg-[#0EA5E9]', dot: 'bg-[#0EA5E9]', hover: 'hover:border-[#0EA5E9]/40 hover:shadow-[#0EA5E9]/10' },
 };
 
 const metricAccentMap = {
-  sky:    'text-sky',
-  purple: 'text-purple',
-  orange: 'text-orange',
+  sky:    'text-[#2FA084]',
+  purple: 'text-[#5D1C6A]',
+  orange: 'text-[#0EA5E9]',
 };
 
 const metricBarMap = {
-  sky:    'bg-sky',
-  purple: 'bg-purple',
-  orange: 'bg-orange',
+  sky:    'bg-[#2FA084]',
+  purple: 'bg-[#5D1C6A]',
+  orange: 'bg-[#0EA5E9]',
 };
 
 export default function WhyAnmelSection() {
@@ -68,20 +68,18 @@ export default function WhyAnmelSection() {
           transition={{ duration: 0.5 }}
           className="text-center max-w-3xl mx-auto mb-14"
         >
-          <span className="inline-block text-sky font-semibold text-xs uppercase tracking-[0.22em] mb-4">
-            Why Anmel Inc
+          <span className="inline-block text-[#2FA084] font-bold text-xs uppercase tracking-[0.22em] mb-4">
+            Why Choose Anmel Inc
           </span>
           <h2
             className="text-3xl sm:text-4xl lg:text-5xl font-bold text-stone-900 leading-[1.12] tracking-tight"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            The Partner Built for{' '}
-            <span className="text-purple">Long-Term</span>{' '}
-            Resilience
+            Integrated Solutions for{' '}
+            <span className="text-[#5D1C6A]">Global Success</span>
           </h2>
           <p className="mt-5 text-stone-600 text-lg leading-relaxed">
-            We combine deep security expertise with modern engineering practices. Every solution
-            is built for resilience, compliance, and long-term trust.
+            At Anmel Inc, we unite Education Consultancy, Web Development, and Cybersecurity Consulting under one roof—giving students, businesses, and institutions a single partner for global growth.
           </p>
         </motion.header>
 
@@ -120,10 +118,9 @@ export default function WhyAnmelSection() {
 
         {/* value-prop cards */}
         <div className="mb-10 text-center">
-          <p className="text-xs font-semibold text-purple uppercase tracking-[0.22em]">What you get</p>
+          <p className="text-xs font-semibold text-[#5D1C6A] uppercase tracking-[0.22em]">Our Core Advantage</p>
           <p className="mt-2 text-stone-600 max-w-xl mx-auto text-sm">
-            When you work with Anmel Inc you get more than a report — you get a partner committed
-            to measurable outcomes and lasting resilience.
+            Partnering with Anmel Inc means working with experienced advisors, software engineers, and security specialists committed to excellence.
           </p>
         </div>
 
@@ -156,7 +153,7 @@ export default function WhyAnmelSection() {
 
                 <ul className="mt-5 space-y-2.5">
                   {pt.details.map((d) => (
-                    <li key={d} className="flex items-center gap-2.5 text-sm text-stone-600">
+                    <li key={d} className="flex items-center gap-2.5 text-sm text-stone-600 font-medium">
                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${a.dot}`} />
                       {d}
                     </li>

@@ -1,33 +1,83 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight,
   Shield,
   ShieldCheck,
-  Lock,
-  Activity,
-  CheckCircle2,
-  AlertCircle,
+  GraduationCap,
+  Code2,
+  Sparkles,
+  ArrowUpRight,
 } from 'lucide-react';
 
-const securityChecks = [
-  { label: 'SSL / TLS Certificate', status: 'Secure', ok: true },
-  { label: 'Security Headers', status: '3 Missing', ok: false },
-  { label: 'Data Encryption', status: 'Enabled', ok: true },
-  { label: 'Vulnerability Scan', status: 'Clean', ok: true },
+const pillars = [
+  {
+    id: 'education',
+    title: 'Education Consultant',
+    badge: 'Study Abroad & Scholarships',
+    icon: GraduationCap,
+    accent: '#2FA084',
+    image: '/images/anmel_education_hero.png',
+    headline: 'Unlock Global Academic Opportunities',
+    desc: 'Expert guidance for international university admissions, 100% tuition scholarships, visa processing, and personalized student counseling worldwide.',
+    stats: [
+      { value: '500+', label: 'Partner Universities' },
+      { value: '$5M+', label: 'Scholarships Secured' },
+      { value: '98%', label: 'Visa Approval Rate' },
+    ],
+    ctaText: 'Explore Education Services',
+    ctaLink: '/education-consultant',
+  },
+  {
+    id: 'webdev',
+    title: 'Web Development',
+    badge: 'Full-Stack Software Engineering',
+    icon: Code2,
+    accent: '#5D1C6A',
+    image: '/images/anmel_webdev_hero.png',
+    headline: 'High-Performance Web & Mobile Apps',
+    desc: 'Custom web application design, modern full-stack development, cloud deployment, and scalable digital architectures built for speed and security.',
+    stats: [
+      { value: '150+', label: 'Web Applications Built' },
+      { value: '99.9%', label: 'Uptime & Speed Score' },
+      { value: '24/7', label: 'Continuous Support' },
+    ],
+    ctaText: 'Explore Web Development',
+    ctaLink: '/web-development',
+  },
+  {
+    id: 'cybersecurity',
+    title: 'Cyber Security Consultant',
+    badge: 'Enterprise Digital Defense',
+    icon: Shield,
+    accent: '#0EA5E9',
+    image: '/images/anmel_cybersecurity_hero.png',
+    headline: 'Proactive Vulnerability & Risk Protection',
+    desc: 'Application penetration testing, ISO 27001 / SOC 2 compliance readiness, continuous threat monitoring, and AI-assisted vulnerability scanners.',
+    stats: [
+      { value: '0', label: 'Unpatched Vulnerabilities' },
+      { value: 'ISO 27001', label: 'Compliance Ready' },
+      { value: 'Instant', label: 'Security Audits' },
+    ],
+    ctaText: 'Explore Cybersecurity',
+    ctaLink: '/services',
+  },
 ];
 
-const stats = [
-  { value: '150+', label: 'Projects Delivered' },
-  { value: '98%', label: 'Client Satisfaction' },
-  { value: '24hr', label: 'Avg. Response' },
-  { value: '12+', label: 'Industries Served' },
+const generalStats = [
+  { value: '10,000+', label: 'Students & Clients Empowered' },
+  { value: '150+', label: 'Web & Security Projects' },
+  { value: '$5M+', label: 'Scholarships Secured' },
+  { value: '98%', label: 'Client & Student Satisfaction' },
 ];
 
 export default function HeroSection() {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('education');
   const [websiteUrl, setWebsiteUrl] = useState('');
+
+  const currentPillar = pillars.find((p) => p.id === activeTab) || pillars[0];
 
   const handleSecurityCheck = (e) => {
     e.preventDefault();
@@ -38,251 +88,257 @@ export default function HeroSection() {
   };
 
   return (
-    <section className="hero-dark relative min-h-screen flex items-center overflow-hidden">
-      {/* ── decorative blobs ── */}
+    <section className="hero-dark relative min-h-screen flex items-center overflow-hidden pt-28 pb-20">
+      {/* Ambient background glows */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-        <div className="absolute -top-32 -left-32 w-[560px] h-[560px] rounded-full bg-purple/20 blur-[120px]" />
-        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-sky/12 blur-[100px]" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full bg-purple/5 blur-[160px]" />
+        <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-[#5D1C6A]/20 blur-[130px]" />
+        <div className="absolute top-1/3 -right-32 w-[550px] h-[550px] rounded-full bg-[#2FA084]/15 blur-[120px]" />
+        <div className="absolute bottom-0 left-1/3 w-[500px] h-[500px] rounded-full bg-[#0EA5E9]/15 blur-[110px]" />
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full pt-28 pb-20">
-        <div className="grid lg:grid-cols-2 gap-12 xl:gap-20 items-center">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
+        {/* Top Company Badge */}
+        <div className="flex justify-center lg:justify-start mb-6">
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45 }}
+            className="inline-flex flex-wrap items-center gap-2 bg-white/5 border border-white/12 text-white/90 px-4 py-2 rounded-full text-xs font-semibold tracking-wider backdrop-blur-md shadow-lg"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#2FA084] opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#2FA084]" />
+            </span>
+            <span className="text-white font-bold">Anmel Inc</span>
+            <span className="text-white/30">•</span>
+            <span className="text-white/80">Education Consultant</span>
+            <span className="text-white/30">•</span>
+            <span className="text-white/80">Web Development</span>
+            <span className="text-white/30">•</span>
+            <span className="text-white/80">Cyber Security Consultant</span>
+          </motion.div>
+        </div>
 
-          {/* ── LEFT: copy ── */}
-          <div>
-            {/* badge */}
-            <motion.div
-              initial={{ opacity: 0, y: -12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45 }}
-              className="inline-flex items-center gap-2 bg-white/5 border border-white/10 text-sky px-4 py-2 rounded-full text-xs font-semibold tracking-wider mb-8 backdrop-blur-sm"
-            >
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-sky" />
-              </span>
-              Trusted Cybersecurity Partner · Monrovia, Liberia
-            </motion.div>
-
-            {/* headline */}
+        {/* Main Headline */}
+        <div className="grid lg:grid-cols-12 gap-8 items-end mb-10">
+          <div className="lg:col-span-8">
             <motion.h1
-              initial={{ opacity: 0, y: 28 }}
+              initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.55, delay: 0.08 }}
-              className="text-5xl sm:text-6xl lg:text-[64px] font-bold text-white leading-[1.04] tracking-tight"
+              transition={{ duration: 0.55 }}
+              className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-[1.08] tracking-tight"
             >
-              Securing{' '}
-              <span className="text-sky">Digital</span>{' '}
-              Assets.
-              <br />
-              <span className="text-orange">Delivering</span>{' '}
-              Trusted Solutions.
+              Empowering Global Growth Through{' '}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#2FA084] via-[#0EA5E9] to-[#9333EA]">
+                Education, Web Dev & Security.
+              </span>
             </motion.h1>
-
-            {/* description */}
             <motion.p
-              initial={{ opacity: 0, y: 18 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.18 }}
-              className="mt-6 text-base sm:text-lg text-white/65 leading-relaxed max-w-xl"
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="mt-4 text-base sm:text-lg text-white/75 leading-relaxed max-w-3xl"
             >
-              Expert cybersecurity consulting, digital forensics, and secure web development
-              for enterprises across Liberia and beyond.
+              Anmel Inc is a multi-disciplinary global enterprise. We guide students to international university degrees, engineer cutting-edge web applications, and protect digital assets with enterprise cybersecurity.
             </motion.p>
-
-            {/* CTAs */}
-            <motion.div
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, delay: 0.28 }}
-              className="mt-8 flex flex-wrap gap-3"
-            >
-              <Link to="/contact" className="btn-primary">
-                Get Free Consultation
-                <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
-              </Link>
-              <Link to="/services" className="btn-secondary">
-                Explore Services
-              </Link>
-            </motion.div>
-
-            {/* trust pills */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5, delay: 0.4 }}
-              className="mt-6 flex flex-wrap gap-2"
-            >
-              {['ISO 27001', 'SOC 2', 'GDPR Compliant', 'PCI DSS'].map((badge) => (
-                <span
-                  key={badge}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-medium text-white/50 bg-white/5 border border-white/8 px-3 py-1 rounded-full"
-                >
-                  <CheckCircle2 className="w-3 h-3 text-sky/70" strokeWidth={2.5} />
-                  {badge}
-                </span>
-              ))}
-            </motion.div>
-
-            {/* security checker widget */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.48 }}
-              className="mt-10 border-t border-white/10 pt-8 max-w-md"
-            >
-              <div className="flex items-center gap-2 mb-1.5">
-                <ShieldCheck className="w-4 h-4 text-sky" strokeWidth={2} />
-                <span className="text-white/90 text-sm font-semibold">Free Website Security Scan</span>
-              </div>
-              <p className="text-white/40 text-xs mb-3">Instant analysis — no sign-up required.</p>
-              <form onSubmit={handleSecurityCheck} className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="yourdomain.com"
-                  value={websiteUrl}
-                  onChange={(e) => setWebsiteUrl(e.target.value)}
-                  className="flex-1 min-w-0 bg-white/6 text-white text-sm px-4 py-3 rounded-xl border border-white/12 focus:border-sky/50 focus:bg-white/10 focus:outline-none transition-all placeholder:text-white/30"
-                />
-                <button
-                  type="submit"
-                  className="bg-sky hover:bg-sky-light text-white text-sm font-bold px-5 py-3 rounded-xl transition-all duration-200 shrink-0 shadow-lg shadow-sky/20"
-                >
-                  Scan
-                </button>
-              </form>
-            </motion.div>
           </div>
 
-          {/* ── RIGHT: security dashboard card ── */}
-          <div className="relative hidden lg:flex items-center justify-center min-h-[500px]">
-            {/* main card */}
-            <motion.div
-              initial={{ opacity: 0, y: 30, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ duration: 0.7, delay: 0.3, type: 'spring', stiffness: 60, damping: 14 }}
-              className="relative w-full max-w-[400px] glass-dark rounded-3xl p-6 shadow-2xl"
-            >
-              {/* card header */}
-              <div className="flex items-center justify-between mb-5">
-                <div>
-                  <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wider">Live Dashboard</p>
-                  <p className="text-white font-bold text-base mt-0.5">Security Overview</p>
-                </div>
-                <div className="w-10 h-10 rounded-xl bg-sky/15 border border-sky/20 flex items-center justify-center">
-                  <Shield className="w-5 h-5 text-sky" strokeWidth={2} />
-                </div>
-              </div>
-
-              {/* score ring */}
-              <div className="flex items-center gap-4 mb-5 p-4 bg-white/4 rounded-2xl border border-white/6">
-                <div className="relative w-[72px] h-[72px] shrink-0">
-                  <svg className="w-[72px] h-[72px] -rotate-90" viewBox="0 0 72 72">
-                    <circle cx="36" cy="36" r="28" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="5.5" />
-                    <circle
-                      cx="36" cy="36" r="28"
-                      fill="none"
-                      stroke="#2FA084"
-                      strokeWidth="5.5"
-                      strokeDasharray="175.9"
-                      strokeDashoffset="31.7"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-white font-bold text-lg leading-none">82</span>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-sky font-semibold text-sm">Good Posture</p>
-                  <p className="text-white/45 text-xs mt-1 leading-relaxed">
-                    3 recommendations to strengthen your defences
-                  </p>
-                </div>
-              </div>
-
-              {/* check rows */}
-              <div className="space-y-1">
-                {securityChecks.map((check) => (
-                  <div
-                    key={check.label}
-                    className="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white/4 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      {check.ok ? (
-                        <CheckCircle2 className="w-4 h-4 text-sky shrink-0" strokeWidth={2} />
-                      ) : (
-                        <AlertCircle className="w-4 h-4 text-orange shrink-0" strokeWidth={2} />
-                      )}
-                      <span className="text-white/75 text-sm">{check.label}</span>
-                    </div>
-                    <span className={`text-xs font-semibold ${check.ok ? 'text-sky' : 'text-orange'}`}>
-                      {check.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {/* card footer */}
-              <div className="mt-4 pt-4 border-t border-white/6 flex items-center justify-between">
-                <span className="text-white/35 text-xs">Last scanned: just now</span>
-                <Link
-                  to="/application-security-checker"
-                  className="text-xs font-semibold text-sky hover:text-sky-light transition-colors flex items-center gap-1"
-                >
-                  Full report <ArrowRight className="w-3 h-3" strokeWidth={2.5} />
-                </Link>
-              </div>
-            </motion.div>
-
-            {/* floating badge — top right */}
-            <motion.div
-              initial={{ opacity: 0, x: 20, y: -10 }}
-              animate={{ opacity: 1, x: 0, y: 0 }}
-              transition={{ delay: 0.75, type: 'spring', stiffness: 80 }}
-              className="absolute top-4 -right-6 glass-dark rounded-2xl px-4 py-3 flex items-center gap-3 shadow-xl"
-            >
-              <div className="w-9 h-9 rounded-xl bg-purple/25 flex items-center justify-center">
-                <Lock className="w-4 h-4 text-purple-light" strokeWidth={2} />
-              </div>
-              <div>
-                <p className="text-white text-xs font-bold">ISO 27001</p>
-                <p className="text-white/45 text-[10px]">Certified</p>
-              </div>
-            </motion.div>
-
-            {/* floating badge — bottom left */}
-            <motion.div
-              initial={{ opacity: 0, x: -20, y: 10 }}
-              animate={{ opacity: 1, x: 0, y: 0 }}
-              transition={{ delay: 0.9, type: 'spring', stiffness: 80 }}
-              className="absolute bottom-8 -left-6 glass-dark rounded-2xl px-4 py-3 flex items-center gap-3 shadow-xl"
-            >
-              <div className="w-9 h-9 rounded-xl bg-orange/15 flex items-center justify-center">
-                <Activity className="w-4 h-4 text-orange" strokeWidth={2} />
-              </div>
-              <div>
-                <p className="text-white text-xs font-bold">24/7 Monitoring</p>
-                <p className="text-white/45 text-[10px]">Active protection</p>
-              </div>
-            </motion.div>
+          <div className="lg:col-span-4 flex flex-wrap gap-3 lg:justify-end">
+            <Link to="/contact" className="btn-primary flex-1 sm:flex-initial justify-center text-sm py-3.5 px-6">
+              Contact Anmel Experts
+              <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
+            </Link>
+            <Link to="/about" className="btn-secondary flex-1 sm:flex-initial justify-center text-sm py-3.5 px-6">
+              About Anmel
+            </Link>
           </div>
         </div>
 
-        {/* ── stats strip ── */}
+        {/* ── 3-PILLAR INTERACTIVE SHOWCASE CARD ── */}
         <motion.div
-          initial={{ opacity: 0, y: 24 }}
+          initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.55, duration: 0.55 }}
-          className="mt-16 grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-white/8 border border-white/8 rounded-2xl overflow-hidden"
+          transition={{ duration: 0.6, delay: 0.2 }}
+          className="rounded-3xl border border-white/12 bg-stone-950/70 backdrop-blur-xl shadow-2xl overflow-hidden p-6 sm:p-8"
         >
-          {stats.map((stat) => (
-            <div key={stat.label} className="px-6 py-5 text-center bg-white/3 hover:bg-white/5 transition-colors">
-              <p className="text-2xl sm:text-3xl font-bold text-white" style={{ fontFamily: 'var(--font-display)' }}>
-                {stat.value}
+          {/* Pillar Tabs */}
+          <div className="flex flex-wrap gap-3 pb-6 border-b border-white/10">
+            {pillars.map((pillar) => {
+              const Icon = pillar.icon;
+              const isActive = activeTab === pillar.id;
+              return (
+                <button
+                  key={pillar.id}
+                  onClick={() => setActiveTab(pillar.id)}
+                  className={`flex items-center gap-3 px-5 py-3 rounded-2xl font-bold text-sm transition-all duration-300 ${
+                    isActive
+                      ? 'bg-white/15 text-white border border-white/20 shadow-lg'
+                      : 'bg-white/4 text-white/60 hover:bg-white/8 hover:text-white border border-transparent'
+                  }`}
+                  style={{
+                    borderColor: isActive ? pillar.accent : 'transparent',
+                  }}
+                >
+                  <span
+                    className="p-1.5 rounded-lg text-white"
+                    style={{ backgroundColor: pillar.accent }}
+                  >
+                    <Icon className="w-4 h-4" strokeWidth={2.5} />
+                  </span>
+                  <span>{pillar.title}</span>
+                  {isActive && (
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: pillar.accent }} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Tab Content Display */}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentPillar.id}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.35 }}
+              className="mt-6 grid lg:grid-cols-12 gap-8 items-center"
+            >
+              {/* Left Details */}
+              <div className="lg:col-span-6 space-y-5">
+                <div
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider text-white"
+                  style={{
+                    backgroundColor: `${currentPillar.accent}33`,
+                    color: currentPillar.accent,
+                    border: `1px solid ${currentPillar.accent}55`,
+                  }}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  {currentPillar.badge}
+                </div>
+
+                <h2 className="text-2xl sm:text-3xl font-bold text-white leading-tight">
+                  {currentPillar.headline}
+                </h2>
+
+                <p className="text-white/70 text-sm sm:text-base leading-relaxed">
+                  {currentPillar.desc}
+                </p>
+
+                {/* Pillar Micro Stats */}
+                <div className="grid grid-cols-3 gap-3 pt-2">
+                  {currentPillar.stats.map((st) => (
+                    <div key={st.label} className="bg-white/5 border border-white/8 rounded-xl p-3 text-center">
+                      <p className="text-lg font-bold text-white" style={{ color: currentPillar.accent }}>
+                        {st.value}
+                      </p>
+                      <p className="text-[11px] text-white/50 font-medium mt-0.5">{st.label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Specific Action Widgets based on Pillar */}
+                {currentPillar.id === 'cybersecurity' ? (
+                  <form onSubmit={handleSecurityCheck} className="pt-2">
+                    <p className="text-white/80 text-xs font-semibold mb-2 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-sky" /> Instant Free Website Security Scan
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="yourdomain.com"
+                        value={websiteUrl}
+                        onChange={(e) => setWebsiteUrl(e.target.value)}
+                        className="flex-1 min-w-0 bg-white/8 text-white text-sm px-4 py-2.5 rounded-xl border border-white/15 focus:outline-none focus:border-sky"
+                      />
+                      <button
+                        type="submit"
+                        className="bg-sky hover:bg-sky-light text-white font-bold text-sm px-5 py-2.5 rounded-xl transition shrink-0"
+                      >
+                        Run Scan
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="pt-2 flex flex-wrap gap-3">
+                    <Link
+                      to={currentPillar.ctaLink}
+                      className="inline-flex items-center gap-2 font-bold text-sm px-6 py-3 rounded-xl text-white transition shadow-lg"
+                      style={{ backgroundColor: currentPillar.accent }}
+                    >
+                      {currentPillar.ctaText}
+                      <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
+                    </Link>
+                    {currentPillar.id === 'education' && (
+                      <Link
+                        to="/student-application"
+                        className="inline-flex items-center gap-2 font-bold text-sm px-5 py-3 rounded-xl bg-white/10 text-white hover:bg-white/20 border border-white/15 transition"
+                      >
+                        Apply for Admission
+                        <ArrowUpRight className="w-4 h-4" />
+                      </Link>
+                    )}
+                    {currentPillar.id === 'webdev' && (
+                      <Link
+                        to="/contact?subject=Web+Development+Quote"
+                        className="inline-flex items-center gap-2 font-bold text-sm px-5 py-3 rounded-xl bg-white/10 text-white hover:bg-white/20 border border-white/15 transition"
+                      >
+                        Request Project Quote
+                        <ArrowUpRight className="w-4 h-4" />
+                      </Link>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Pillar Hero Image */}
+              <div className="lg:col-span-6 relative">
+                <div className="relative rounded-2xl overflow-hidden border border-white/15 shadow-2xl group">
+                  <img
+                    src={currentPillar.image}
+                    alt={currentPillar.title}
+                    className="w-full h-72 sm:h-80 lg:h-96 object-cover transform transition-transform duration-700 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-stone-950/80 via-stone-950/20 to-transparent" />
+
+                  {/* Floating Overlay Badge */}
+                  <div className="absolute bottom-4 left-4 right-4 bg-stone-950/80 backdrop-blur-md p-4 rounded-xl border border-white/10 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-white uppercase tracking-wider block">
+                        Anmel Pillar Excellence
+                      </span>
+                      <span className="text-sm font-semibold text-white/80">
+                        {currentPillar.title}
+                      </span>
+                    </div>
+                    <Link
+                      to={currentPillar.ctaLink}
+                      className="p-2 rounded-lg text-white hover:scale-105 transition"
+                      style={{ backgroundColor: currentPillar.accent }}
+                    >
+                      <ArrowRight className="w-4 h-4" />
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+        </motion.div>
+
+        {/* General Stats Strip */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4, duration: 0.5 }}
+          className="mt-12 grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-white/10 border border-white/10 rounded-2xl bg-white/3 overflow-hidden backdrop-blur-sm"
+        >
+          {generalStats.map((st) => (
+            <div key={st.label} className="p-5 text-center hover:bg-white/5 transition">
+              <p className="text-2xl sm:text-3xl font-extrabold text-white" style={{ fontFamily: 'var(--font-display)' }}>
+                {st.value}
               </p>
-              <p className="text-white/45 text-xs mt-1 font-medium">{stat.label}</p>
+              <p className="text-white/50 text-xs mt-1 font-medium">{st.label}</p>
             </div>
           ))}
         </motion.div>

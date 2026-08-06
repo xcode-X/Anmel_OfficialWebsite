@@ -8,29 +8,29 @@ const ChecklistDownload = lazy(() => import('../lead/ChecklistDownload'));
 import logoAnmel from '../../images/logo_anmel_transparent.png';
 
 const footerLinks = {
-  Navigation: [
-    { to: '/', label: 'Home' },
-    { to: '/about', label: 'About' },
-    { to: '/services', label: 'Security Services' },
-    { to: '/education', label: 'Education' },
-    { to: '/case-studies', label: 'Portfolio' },
-    { to: '/contact', label: 'Contact' },
+  Pillars: [
+    { to: '/education-consultant', label: 'Education Consultant' },
+    { to: '/web-development', label: 'Web Development' },
+    { to: '/services', label: 'Cyber Security Consultant' },
+    { to: '/education-consultant/scholarships', label: 'Scholarships Directory' },
+    { to: '/student-application', label: 'Student Admissions' },
+    { to: '/agent-registration', label: 'Partner Agent Network' },
   ],
   Services: [
+    { to: '/education-consultant', label: 'University Admissions & Placement' },
+    { to: '/web-development', label: 'Custom Full-Stack Web Apps' },
     { to: '/services/security-assessment', label: 'Penetration Testing' },
-    { to: '/services/security-assessment', label: 'Security Audits' },
-    { to: '/services/compliance', label: 'Compliance Consulting' },
-    { to: '/services/secure-development', label: 'Web Development' },
-    { to: '/services/cloud-security', label: 'Cloud Security' },
+    { to: '/services/compliance', label: 'ISO 27001 & SOC 2 Compliance' },
+    { to: '/application-security-checker', label: 'Free Website Security Scanner' },
   ],
-  Resources: [
-    { to: '/application-security-checker', label: 'Application Security Checker' },
-    { to: '/education', label: 'Education & courses' },
-    { to: '/blog', label: 'Security Blog' },
+  Navigation: [
+    { to: '/', label: 'Home' },
+    { to: '/about', label: 'About Anmel' },
     { to: '/case-studies', label: 'Case Studies' },
-    { to: '/blog', label: 'White Papers' },
-    { to: '/#security-checklist', label: 'Security Checklist' },
-    { to: '/#faq', label: 'FAQ' },
+    { to: '/blog', label: 'Insights & Blog' },
+    { to: '/student', label: 'Student Portal' },
+    { to: '/agent-login', label: 'Agent Portal' },
+    { to: '/contact', label: 'Contact Us' },
   ],
 };
 
@@ -49,8 +49,7 @@ export default function Footer() {
                 <img src={logoAnmel} alt="Anmel Inc" className="h-14 sm:h-16 w-auto object-contain" />
               </Link>
               <p className="text-stone-400 text-sm max-w-sm leading-relaxed">
-                Protecting your digital assets with cutting-edge cybersecurity solutions and secure web engineering—from Monrovia,
-                Liberia to teams worldwide.
+                Empowering individuals and enterprise growth across global Education Consultancy, custom Web Development, and enterprise Cyber Security Consulting.
               </p>
               <div className="mt-6 space-y-3">
                 <div className="flex items-center gap-3 text-sm text-stone-400">
